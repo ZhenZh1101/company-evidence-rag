@@ -1,0 +1,134 @@
+import argparse
+from dataclasses import asdict, replace
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import sys
+import warnings
+from .config import Settings
+from .client import Gateway
+from .store import Store, digest
+from .pipeline import RAG
+
+
+def output(value):
+    print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
+
+
+def ingest(args, store):
+    from .ingest import discover, extract, chunk_segments
+    report = dict(started_at=datetime.now(timezone.utc).isoformat(), imported=0, unchanged=0, failures=[], warnings=[], skipped=[], roots=[])
+    parsed = {}
+    for root_arg in args.paths:
+        root = Path(root_arg).expanduser().resolve()
+        sources, skipped = discover(root, args.company)
+        report['skipped'].extend(skipped)
+        report['roots'].append(str(root))
+        if args.limit:
+            sources = sources[:args.limit]
+        for i, source in enumerate(sources, 1):
+            try:
+                with source.path.open('rb') as stream:
+                    sha = hashlib.file_digest(stream, 'sha256').hexdigest()
+                fingerprint = digest('parser-v1|' + sha + json.dumps(asdict(source), default=str, sort_keys=True))
+                if store.unchanged(source.key, fingerprint):
+                    report['unchanged'] += 1
+                    continue
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter('always')
+                    if sha not in parsed:
+                        parsed[sha] = chunk_segments(extract(source))
+                    segments = parsed[sha]
+                report['warnings'].extend(dict(path=str(source.path), message=str(w.message)) for w in caught)
+                if not segments:
+                    raise ValueError('No indexable text (scanned/image-only or unsupported content).')
+                store.put(source, root, fingerprint, sha, segments)
+                report['imported'] += 1
+            except Exception as exc:
+                report['failures'].append(dict(path=str(source.path), error=f'{type(exc).__name__}: {exc}'))
+            if i % 25 == 0 or i == len(sources):
+                print(f'{root.name}: {i}/{len(sources)} documents; imported={report["imported"]}, failed={len(report["failures"])}', file=sys.stderr, flush=True)
+        if args.prune and not args.limit:
+            keep = {s.key for s in sources}
+            old = [r[0] for r in store.db.execute('SELECT id FROM documents WHERE root=?', (str(root),)) if r[0] not in keep]
+            with store.db:
+                store.db.executemany('DELETE FROM documents WHERE id=?', [(key,) for key in old])
+            report.setdefault('pruned', 0)
+            report['pruned'] += len(old)
+    report['finished_at'] = datetime.now(timezone.utc).isoformat()
+    report['stats'] = store.stats()
+    report_path = Path(args.report)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    output({k: v if k not in ('failures','warnings','skipped') else len(v) for k,v in report.items()})
+    return bool(report['failures'])
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Evidence-grounded company RAG')
+    parser.add_argument('--db', type=Path, help='Override RAG_DB_PATH')
+    sub = parser.add_subparsers(dest='command', required=True)
+    sub.add_parser('doctor', help='Verify chat and embedding gateway')
+    sub.add_parser('stats')
+    load = sub.add_parser('ingest', help='Import archive indexes, folders or individual supported files')
+    load.add_argument('paths', nargs='+')
+    load.add_argument('--company', help='Company ticker for generic files/folders')
+    load.add_argument('--limit', type=int, help='Explicit partial import: first N selected documents per root')
+    load.add_argument('--prune', action='store_true', help='Remove sources no longer present in these roots')
+    load.add_argument('--report', default='data/ingest-report.json')
+    embed = sub.add_parser('embed', help='Resume embedding all pending chunks')
+    embed.add_argument('--batch-size', type=int, default=64)
+    for name in ('search','ask'):
+        p = sub.add_parser(name)
+        p.add_argument('question')
+        p.add_argument('--company', action='append', dest='companies')
+        p.add_argument('--category', action='append', dest='categories')
+        p.add_argument('--date-from')
+        p.add_argument('--date-to')
+        p.add_argument('--top-k', type=int, default=10)
+        p.add_argument('--no-rewrite', action='store_true')
+        p.add_argument('--mode', choices=['hybrid','lexical','dense'], default='hybrid')
+    serve = sub.add_parser('serve', help='Serve local web UI and API')
+    serve.add_argument('--port', type=int, default=8000)
+    args = parser.parse_args()
+    settings = Settings.from_env()
+    if args.db:
+        settings = replace(settings, db_path=args.db)
+    gateway = Gateway(settings)
+    try:
+        if args.command == 'serve':
+            import uvicorn
+            from .web import create_app
+            uvicorn.run(create_app(settings), host='127.0.0.1', port=args.port)
+            return
+        if args.command == 'doctor':
+            vectors = gateway.embed(['The company revenue increased ten percent.', 'Corporate sales grew by 10%.', 'Bananas are tropical fruit.'])
+            output(dict(chat=gateway.chat([{'role':'user','content':'Reply with only OK.'}], max_tokens=16),
+                        embedding_dimension=vectors.shape[1], related_cosine=float(vectors[0]@vectors[1]),
+                        unrelated_cosine=float(vectors[0]@vectors[2])))
+            return
+        with Store(settings.db_path) as store:
+            if args.command == 'stats':
+                output(store.stats())
+            elif args.command == 'ingest':
+                if args.limit is not None and args.limit < 1:
+                    raise ValueError('--limit must be positive')
+                if ingest(args, store):
+                    sys.exit(2)
+            elif args.command == 'embed':
+                if not 1 <= args.batch_size <= 256:
+                    raise ValueError('--batch-size must be 1–256')
+                count = store.embed_pending(gateway, args.batch_size, lambda n: print(f'Embedded {n} new unique chunks', file=sys.stderr, flush=True))
+                output(dict(new_vectors=count, **store.stats()))
+            else:
+                options = {k:getattr(args,k) for k in ('companies','categories','date_from','date_to','top_k','mode')}
+                options['rewrite'] = not args.no_rewrite
+                output(getattr(RAG(store,gateway),args.command)(args.question, **options))
+    except (ValueError, RuntimeError, OSError) as exc:
+        print(f'Error: {exc}', file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
