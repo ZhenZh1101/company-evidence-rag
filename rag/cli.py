@@ -49,9 +49,14 @@ def ingest(args, store):
                 report['failures'].append(dict(path=str(source.path), error=f'{type(exc).__name__}: {exc}'))
             if i % 25 == 0 or i == len(sources):
                 print(f'{root.name}: {i}/{len(sources)} documents; imported={report["imported"]}, failed={len(report["failures"])}', file=sys.stderr, flush=True)
+        discovery_errors = [entry for entry in skipped if entry.get('kind') == 'error']
+        if args.prune and discovery_errors:
+            report['warnings'].append(dict(path=str(root),message='Pruning disabled for undiscovered sources because discovery had errors; only explicitly excluded files may be removed.'))
         if args.prune and not args.limit:
             keep = {s.key for s in sources}
-            old = [r[0] for r in store.db.execute('SELECT id FROM documents WHERE root=?', (str(root),)) if r[0] not in keep]
+            excluded = {entry['path'] for entry in skipped if entry.get('kind') != 'error'}
+            old = [r['id'] for r in store.db.execute('SELECT id,path FROM documents WHERE root=?', (str(root),))
+                   if r['id'] not in keep and (not discovery_errors or r['path'] in excluded)]
             with store.db:
                 store.db.executemany('DELETE FROM documents WHERE id=?', [(key,) for key in old])
             report.setdefault('pruned', 0)

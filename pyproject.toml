@@ -12,6 +12,9 @@ dependencies = ["numpy>=1.26,<3", "beautifulsoup4>=4.12,<5", "pypdf>=5,<7", "pyt
 [project.scripts]
 company-rag = "rag.cli:main"
 
+[project.optional-dependencies]
+test = ["httpx>=0.28,<1"]
+
 [tool.setuptools.package-data]
 rag = ["static/*.html"]
 

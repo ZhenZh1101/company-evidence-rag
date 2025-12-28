@@ -164,12 +164,14 @@
       if (dateFrom && dateTo && dateFrom > dateTo) { showError('开始日期不能晚于结束日期。'); return; }
       const companies = Array.from($('companies').querySelectorAll('input:checked'), input => input.value);
       const payload = {question, companies: companies.length ? companies : null, date_from: dateFrom || null, date_to: dateTo || null, rewrite: $('rewrite').checked, mode: $('mode').value, top_k: Number($('top-k').value)};
+      const controls = Array.from(document.querySelectorAll('input,textarea,select,button')).filter(control => !control.disabled);
+      controls.forEach(control => control.disabled = true);
       $('error').hidden = true; $('loading').hidden = false; $('empty').hidden = true; $('result').hidden = true;
       $('submit').disabled = true; $('submit').textContent = '正在回答…'; $('ask-form').setAttribute('aria-busy', 'true');
       const start = performance.now();
       try { const data = await request('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); showResult(data, (performance.now() - start) / 1000); }
       catch (error) { showError(error.message || '请求失败，请确认本地服务仍在运行。'); }
-      finally { $('loading').hidden = true; $('submit').disabled = false; $('submit').textContent = '检索并回答 ↗'; $('ask-form').removeAttribute('aria-busy'); }
+      finally { controls.forEach(control => control.disabled = false); $('loading').hidden = true; $('submit').textContent = '检索并回答 ↗'; $('ask-form').removeAttribute('aria-busy'); }
     });
     $('clear-companies').addEventListener('click', () => $('companies').querySelectorAll('input').forEach(input => input.checked = false));
     document.querySelectorAll('.example').forEach(button => button.addEventListener('click', () => { $('question').value = button.textContent; $('question').focus(); }));

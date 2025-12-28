@@ -1,0 +1,11 @@
+[
+  {"id":"cbrs_gaap","question":"Cerebras Q1 2026 GAAP quarterly revenue","companies":["CBRS"],"targets":[{"company":"CBRS","text":["193.4"]}]},
+  {"id":"cbrs_core","question":"Cerebras first quarter 2026 core total revenue non-GAAP","companies":["CBRS"],"targets":[{"company":"CBRS","text":["191.3"]}]},
+  {"id":"cbrs_outlook","question":"Cerebras June 23 2026 second quarter core revenue financial outlook","companies":["CBRS"],"date_to":"2026-06-23","targets":[{"company":"CBRS","text":["194.0"]}]},
+  {"id":"cbrs_segments","question":"Cerebras Q1 2026 hardware revenue cloud and other services revenue GAAP","companies":["CBRS"],"targets":[{"company":"CBRS","text":["110.6","82.8"]}]},
+  {"id":"noc_quarter_sales","question":"Northrop Grumman second quarter 2026 sales 2025 comparative financial results","companies":["NOC"],"targets":[{"company":"NOC","text":["10,876","10,351"]}]},
+  {"id":"noc_ytd","question":"Northrop Grumman six months ended June 30 2026 total sales","companies":["NOC"],"targets":[{"company":"NOC","text":["20,757","19,819"]}]},
+  {"id":"noc_eps","question":"Northrop Grumman second quarter 2026 diluted earnings per share","companies":["NOC"],"targets":[{"company":"NOC","text":["7.68","8.15"]}]},
+  {"id":"noc_backlog","question":"Northrop Grumman second quarter 2026 backlog net awards","companies":["NOC"],"targets":[{"company":"NOC","text":["104.7","20.0"]}]},
+  {"id":"two_companies","question":"Compare Cerebras Q1 2026 GAAP revenue and Northrop Grumman Q2 2026 sales in USD millions","companies":["CBRS","NOC"],"targets":[{"company":"CBRS","text":["193.4"]},{"company":"NOC","text":["10,876"]}]}
+]

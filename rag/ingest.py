@@ -67,7 +67,7 @@ def _selection_reason(path: str, candidates: set[str], category: str, meta: dict
     p = Path(path)
     if p.suffix.lower() not in SUPPORTED:
         return "Unsupported format or non-document asset"
-    if p.name in NOTICE_FILES or "streaming" in p.name or "online_viewer" in p.name:
+    if p.name in NOTICE_FILES or p.name.startswith("unavailable_") or "streaming" in p.name or "online_viewer" in p.name:
         return "Media link/availability metadata; no transcript content"
     if category.startswith("sec_"):
         primary = Path(meta.get("sec_submission", {}).get("primaryDocument", "")).name
@@ -97,7 +97,9 @@ def _selection_reason(path: str, candidates: set[str], category: str, meta: dict
         readable = next((x for x in ("article.html", "page.txt", "page.html") if x in candidates), None)
         if path in {"article.html", "page.txt", "page.html"} and path != readable:
             return "Alternative webpage representation"
-        if p.name.startswith("main_site_") or p.name.startswith("ir_mirror_"):
+        if readable and p.name in {"source_listing.html", "source_fragment.html", "listing_entry.html", "listing.txt", "ir_page.html", "ir_page.txt", "ir_article.html"}:
+            return "Archive listing/capture/mirror already represented by canonical article"
+        if readable and (p.name.startswith("main_site_") or p.name.startswith("ir_mirror_")):
             return "Merged release mirror"
         if p.name == "release.pdf" and category in {"ir_news", "press_releases"} and readable:
             return "PDF version of the same complete press release"
@@ -122,18 +124,22 @@ def discover(root: Path, company: str | None = None) -> tuple[list[Source], list
                 folder = _safe_path(root, item["folder"])
                 meta_path = _safe_path(folder, "meta.json")
                 meta = json.loads(meta_path.read_text())
+                if not isinstance(meta, dict):
+                    raise ValueError("Archive metadata must be an object")
                 if item.get("status") == "unavailable" or meta.get("status") == "unavailable":
                     report.append({"path": str(folder), "reason": "Unavailable source; metadata only"})
                     continue
-                files = meta.get("files", [])
+                files = meta.get("files")
+                if not isinstance(files, list):
+                    raise ValueError("Archive metadata files must be a list")
                 candidates = {f.get("path") or f.get("filename") for f in files if isinstance(f, dict)} - {None}
                 for f in files:
                     if not isinstance(f, dict):
-                        report.append({"path": str(folder), "reason": "Invalid file record"})
+                        report.append({"path": str(folder), "reason": "Invalid file record", "kind": "error"})
                         continue
                     relative = f.get("path") or f.get("filename")
                     if not relative:
-                        report.append({"path": str(folder), "reason": "File record has no path"})
+                        report.append({"path": str(folder), "reason": "File record has no path", "kind": "error"})
                         continue
                     try:
                         path = _safe_path(folder, relative)
@@ -153,10 +159,10 @@ def discover(root: Path, company: str | None = None) -> tuple[list[Source], list
                                                    "date_basis": source.date_basis, "scope": source.scope,
                                                    "role": "release_page"})
                         sources.append(source)
-                    except (ValueError, OSError) as exc:
-                        report.append({"path": str(folder / relative), "reason": str(exc)})
+                    except (ValueError, OSError, TypeError) as exc:
+                        report.append({"path": str(folder / str(relative)), "reason": str(exc), "kind": "error"})
             except (ValueError, OSError, KeyError, TypeError) as exc:
-                report.append({"path": str(item.get("folder", root) if isinstance(item, dict) else root), "reason": str(exc)})
+                report.append({"path": str(item.get("folder", root) if isinstance(item, dict) else root), "reason": str(exc), "kind": "error"})
         return sources, report
     base = root if root.is_dir() else root.parent
     paths = sorted(root.rglob("*")) if root.is_dir() else [root]
@@ -164,7 +170,7 @@ def discover(root: Path, company: str | None = None) -> tuple[list[Source], list
         if not path.is_file() or any(part.startswith(".") or part in {"audit", "__pycache__", "node_modules"} for part in path.relative_to(base).parts):
             continue
         if not path.resolve().is_relative_to(base):
-            report.append({"path": str(path), "reason": "Symlink escapes source directory"})
+            report.append({"path": str(path), "reason": "Symlink escapes source directory", "kind": "error"})
         elif path.suffix.lower() in SUPPORTED:
             sources.append(_source(path.resolve(), company or base.name, {}, {}, ""))
         else:

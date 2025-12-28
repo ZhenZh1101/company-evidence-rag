@@ -60,17 +60,18 @@ class Store:
     def check_embedding_identity(self, gateway):
         identity = gateway.settings.base_url + '|' + gateway.settings.embedding_model
         previous = self.meta('embedding_identity')
-        if previous and previous != identity:
+        populated = self.db.execute('SELECT 1 FROM embeddings LIMIT 1').fetchone()
+        if previous and previous != identity and populated:
             raise ValueError('Embedding endpoint/model differs from this index. Use a new RAG_DB_PATH or rebuild vectors explicitly.')
         with self.db:
-            self.db.execute('INSERT OR IGNORE INTO metadata VALUES (?,?)', ('embedding_identity', identity))
+            self.db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)', ('embedding_identity', identity))
 
     def unchanged(self, key, fingerprint):
         row = self.db.execute('SELECT fingerprint FROM documents WHERE id=?', (key,)).fetchone()
         return bool(row and row[0] == fingerprint)
 
     def put(self, source, root, fingerprint, content_hash, segments):
-        values = (source.key, str(root), fingerprint, content_hash, source.company, source.title,
+        values = (source.key, str(Path(root).resolve()), fingerprint, content_hash, source.company, source.title,
                   source.category, source.publication_date, source.publication_period, source.date_basis,
                   source.scope, source.source_url, str(source.path), json.dumps(source.aliases, ensure_ascii=False))
         with self.db:

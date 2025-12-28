@@ -39,6 +39,43 @@ class IngestTests(unittest.TestCase):
             self.assertIn("Sales | 10,876 | 10,351", table.text)
             self.assertTrue(any("Final paragraph" in s.text for s in segments))
 
+    def test_discovery_marks_broken_metadata_and_missing_files_as_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records = []
+            for name, metadata in [("broken", "{invalid json"), ("missing_files", "{}"),
+                                   ("missing_path", '{"files":[{}]}'),
+                                   ("missing_file", '{"files":[{"path":"lost.txt"}]}'),
+                                   ("unsafe_path", '{"files":[{"path":"../../outside.txt"}]}')]:
+                folder = root / name
+                folder.mkdir()
+                (folder / "meta.json").write_text(metadata)
+                records.append({"folder": name})
+            (root / "index.json").write_text(json.dumps(records))
+            sources, report = discover(root)
+            self.assertEqual(sources, [])
+            self.assertEqual(len(report), 5)
+            self.assertTrue(all(r.get("kind") == "error" for r in report))
+
+    def test_capture_wrappers_suppressed_only_when_canonical_article_exists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records = []
+            for name, canonical in [("with_article", True), ("fragment_only", False)]:
+                folder = root / name
+                folder.mkdir()
+                filenames = ["source_fragment.html", "source_listing.html", "ir_page.txt", "unavailable_historical_calendar.txt"]
+                if canonical:
+                    filenames.append("article.html")
+                for filename in filenames:
+                    (folder / filename).write_text("Source text")
+                (folder / "meta.json").write_text(json.dumps({"files": [{"path": filename} for filename in filenames]}))
+                records.append({"folder": name, "category": "blogs"})
+            (root / "index.json").write_text(json.dumps(records))
+            sources, _ = discover(root)
+            self.assertEqual({s.path.name for s in sources if s.path.parent.name == "with_article"}, {"article.html"})
+            self.assertEqual({s.path.name for s in sources if s.path.parent.name == "fragment_only"}, {"source_fragment.html", "source_listing.html", "ir_page.txt"})
+
     def test_sec_selects_primary_html_and_exhibit_not_transformed_duplicates(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
