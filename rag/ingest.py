@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 import warnings
 from dataclasses import dataclass, field
 from datetime import date
@@ -274,7 +275,21 @@ def _html(path: Path) -> list[Segment]:
     return segments
 
 
-def extract(source: Source) -> list[Segment]:
+def _ocr_pdf_page(path: Path, number: int) -> str:
+    with tempfile.TemporaryDirectory(prefix="rag-ocr-") as directory:
+        image = Path(directory) / "page"
+        commands = [
+            ["pdftoppm", "-f", str(number), "-l", str(number), "-singlefile", "-r", "180", "-png", str(path), str(image)],
+            ["tesseract", str(image.with_suffix(".png")), "stdout", "-l", "eng"],
+        ]
+        for command in commands:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+            if result.returncode:
+                raise ValueError(f"{command[0]} failed: {result.stderr[:500]}")
+        return result.stdout
+
+
+def extract(source: Source, ocr: bool = False) -> list[Segment]:
     """Extract evidence, raising a visible error if the input has no readable text."""
     path, suffix = source.path, source.path.suffix.lower()
     segments: list[Segment] = []
@@ -294,9 +309,23 @@ def extract(source: Source) -> list[Segment]:
         else:
             from pypdf import PdfReader
             pages = [page.extract_text(extraction_mode="layout") or "" for page in PdfReader(path).pages]
+        if ocr and any(not page.strip() for page in pages):
+            missing = [name for name in ("pdftoppm", "tesseract") if not shutil.which(name)]
+            if missing:
+                raise ValueError(f"Local PDF OCR requires {', '.join(missing)} on PATH; install Poppler/Tesseract with English language data and rerun with --ocr")
         for number, text in enumerate(pages, 1):
             if text.strip():
                 segments.append(Segment(text, f"page {number}"))
+            elif ocr:
+                try:
+                    recognized = _ocr_pdf_page(path, number)
+                    if recognized.strip():
+                        segments.append(Segment(recognized, f"page {number} (OCR; verify against original)"))
+                        warnings.warn(f"{path}: page {number} used local English OCR; verify against original", stacklevel=2)
+                    else:
+                        warnings.warn(f"{path}: page {number} OCR returned no text; inspect the original image", stacklevel=2)
+                except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+                    warnings.warn(f"{path}: page {number} OCR failed: {exc}; inspect original scan and Tesseract language data", stacklevel=2)
             else:
                 warnings.warn(f"{path}: page {number} has no extractable text; image/OCR review required", stacklevel=2)
     elif suffix == ".docx":
@@ -342,6 +371,8 @@ def extract(source: Source) -> list[Segment]:
         raise ValueError(f"Unsupported document format: {suffix}")
     result = [Segment(_clean(s.text), s.locator) for s in segments if _clean(s.text)]
     if not result:
+        if suffix == ".pdf" and ocr:
+            raise ValueError(f"No extractable text in {path}; OCR produced no usable text, inspect scan quality and Tesseract language data")
         raise ValueError(f"No extractable text in {path}; scanned/image-only documents require OCR")
     return result
 

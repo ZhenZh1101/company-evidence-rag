@@ -31,14 +31,15 @@ def ingest(args, store):
             try:
                 with source.path.open('rb') as stream:
                     sha = hashlib.file_digest(stream, 'sha256').hexdigest()
-                fingerprint = digest('parser-v1|' + sha + json.dumps(asdict(source), default=str, sort_keys=True))
+                ocr = getattr(args, 'ocr', False)
+                fingerprint = digest(('parser-v2-ocr|' if ocr else 'parser-v1|') + sha + json.dumps(asdict(source), default=str, sort_keys=True))
                 if store.unchanged(source.key, fingerprint):
                     report['unchanged'] += 1
                     continue
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter('always')
                     if sha not in parsed:
-                        parsed[sha] = chunk_segments(extract(source))
+                        parsed[sha] = chunk_segments(extract(source, ocr=ocr))
                     segments = parsed[sha]
                 report['warnings'].extend(dict(path=str(source.path), message=str(w.message)) for w in caught)
                 if not segments:
@@ -81,6 +82,7 @@ def main():
     load.add_argument('--company', help='Company ticker for generic files/folders')
     load.add_argument('--limit', type=int, help='Explicit partial import: first N selected documents per root')
     load.add_argument('--prune', action='store_true', help='Remove sources no longer present in these roots')
+    load.add_argument('--ocr', action='store_true', help='Use local Poppler + Tesseract (English) for blank PDF pages')
     load.add_argument('--report', default='data/ingest-report.json')
     embed = sub.add_parser('embed', help='Resume embedding all pending chunks')
     embed.add_argument('--batch-size', type=int, default=64)

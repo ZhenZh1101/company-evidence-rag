@@ -1,7 +1,10 @@
 import json
+import subprocess
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
+from unittest.mock import patch
 
 from rag.ingest import Segment, Source, chunk_segments, discover, extract
 
@@ -38,6 +41,31 @@ class IngestTests(unittest.TestCase):
             self.assertIn("USD millions", table.text)
             self.assertIn("Sales | 10,876 | 10,351", table.text)
             self.assertTrue(any("Final paragraph" in s.text for s in segments))
+
+    def test_pdf_ocr_only_reads_blank_pages_and_preserves_order(self):
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            self.assertLessEqual(kwargs["timeout"], 120)
+            output = {"pdftotext": "Existing first page\f\fExisting third page\f",
+                      "pdftoppm": "", "tesseract": "Recognized second page"}[command[0]]
+            return subprocess.CompletedProcess(command, 0, output, "")
+
+        with patch("rag.ingest.shutil.which", side_effect=lambda name: "/bin/" + name), patch("rag.ingest.subprocess.run", side_effect=run):
+            with warnings.catch_warnings(record=True) as notices:
+                segments = extract(source(Path("/example/report.pdf")), ocr=True)
+        self.assertEqual([x.text for x in segments], ["Existing first page", "Recognized second page", "Existing third page"])
+        self.assertEqual([x.locator for x in segments], ["page 1", "page 2 (OCR; verify against original)", "page 3"])
+        self.assertEqual([c[0] for c in calls], ["pdftotext", "pdftoppm", "tesseract"])
+        self.assertEqual(calls[1][1:5], ["-f", "2", "-l", "2"])
+        self.assertEqual(calls[2][-2:], ["-l", "eng"])
+        self.assertTrue(any("used local English OCR" in str(w.message) for w in notices))
+
+    def test_pdf_ocr_missing_binary_is_actionable_error(self):
+        with patch("rag.ingest.shutil.which", side_effect=lambda name: None if name == "tesseract" else "/bin/" + name), patch("rag.ingest.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "\f", "")):
+            with self.assertRaisesRegex(ValueError, "requires tesseract"):
+                extract(source(Path("/example/scan.pdf")), ocr=True)
 
     def test_discovery_marks_broken_metadata_and_missing_files_as_errors(self):
         with tempfile.TemporaryDirectory() as directory:

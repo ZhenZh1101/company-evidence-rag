@@ -1,6 +1,7 @@
 """Small OpenAI-compatible client; errors never include credentials or response bodies."""
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib import error, request
 import numpy as np
 from .config import Settings
@@ -39,6 +40,26 @@ class Gateway:
     def embed(self, texts):
         if not texts:
             return np.empty((0, 0), dtype=np.float32)
+        batches, batch, characters = [], [], 0
+        for text in texts:
+            if not isinstance(text, str) or not text.strip() or len(text) > 60000:
+                raise ValueError('Embedding inputs must be nonempty strings of at most 60000 characters.')
+            # The configured gateway has a 65,536-character total request limit.
+            if batch and (characters + len(text) > 60000 or len(batch) >= 64):
+                batches.append(batch)
+                batch, characters = [], 0
+            batch.append(text)
+            characters += len(text)
+        batches.append(batch)
+        if len(batches) == 1:
+            return self._embed_batch(batches[0])
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            parts = list(pool.map(self._embed_batch, batches))
+        if len({part.shape[1] for part in parts}) != 1:
+            raise RuntimeError('Gateway changed embedding dimensions between batches.')
+        return np.concatenate(parts)
+
+    def _embed_batch(self, texts):
         data = self._post('embeddings', {'model': self.settings.embedding_model, 'input': texts})
         try:
             entries = sorted(data['data'], key=lambda item: item['index'])
