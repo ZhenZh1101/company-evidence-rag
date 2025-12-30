@@ -63,7 +63,7 @@ def _source(path: Path, company: str, item: dict, meta: dict, url: str) -> Sourc
     )
 
 
-def _selection_reason(path: str, candidates: set[str], category: str, meta: dict) -> str | None:
+def _selection_reason(path: str, candidates: set[str], category: str, meta: dict, file_record: dict | None = None) -> str | None:
     """Suppress only known archive wrappers and alternative representations."""
     p = Path(path)
     if p.suffix.lower() not in SUPPORTED:
@@ -95,6 +95,16 @@ def _selection_reason(path: str, candidates: set[str], category: str, meta: dict
         if p.name == "filing.html" and not primary_html and any(Path(x).stem == accession and Path(x).suffix.lower() == ".pdf" for x in candidates):
             return "IR filing mirror; selected rendered PDF retains ownership-form labels"
     else:
+        record = file_record or {}
+        material_url = meta.get("url")
+        attachment_record = any(isinstance(f, dict) and f.get("source_url") == material_url
+                                and f.get("kind") in {"attachment", "document_attachment", "pdf_attachment", "alternative_attachment"}
+                                for f in meta.get("files", []))
+        if (p.name in {"page.html", "page.txt", "article.html"}
+                and record.get("kind") in {"source_html", "rendered_html", "readable_text"}
+                and record.get("source_url") and material_url and record["source_url"] != material_url
+                and (attachment_record or category == "quarterly_results")):
+            return "Parent collection/homepage capture; snapshot is not dated document evidence"
         readable = next((x for x in ("article.html", "page.txt", "page.html") if x in candidates), None)
         if path in {"article.html", "page.txt", "page.html"} and path != readable:
             return "Alternative webpage representation"
@@ -146,7 +156,7 @@ def discover(root: Path, company: str | None = None) -> tuple[list[Source], list
                         path = _safe_path(folder, relative)
                         if f.get("status") in {"failed", "unavailable"} or not path.is_file():
                             raise ValueError("File unavailable or download failed")
-                        reason = _selection_reason(relative, candidates, item.get("category", ""), meta)
+                        reason = _selection_reason(relative, candidates, item.get("category", ""), meta, f)
                         if reason:
                             report.append({"path": str(path), "reason": reason})
                             continue

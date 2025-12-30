@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -227,6 +228,44 @@ class StoreAndRAGTests(unittest.TestCase):
 
 
 class ClientTests(unittest.TestCase):
+    def test_embedding_batches_respect_limits_preserve_order_and_reject_dimension_changes(self):
+        gateway = Gateway(Settings(api_key="offline-test-token"))
+        texts = [f"{i}:small" for i in range(130)] + [f"{i}:" + "x" * 30000 for i in range(130, 133)]
+        recorded = []
+        later_started = Event()
+        mismatched = False
+
+        def response(route, payload):
+            self.assertEqual(route, "embeddings")
+            batch = payload["input"]
+            recorded.append(batch.copy())
+            first = int(batch[0].split(":", 1)[0])
+            if first == 0:
+                self.assertTrue(later_started.wait(2), "Expected another batch to execute while the first is delayed")
+            else:
+                later_started.set()
+            entries = []
+            for index, text in enumerate(batch):
+                vector = [int(text.split(":", 1)[0]) + 1, 1]
+                if mismatched and first == 64:
+                    vector.append(1)
+                entries.append({"index": index, "embedding": vector})
+            return {"data": list(reversed(entries))}
+
+        with patch.object(gateway, "_post", side_effect=response):
+            vectors = gateway.embed(texts)
+        self.assertGreater(len(recorded), 3)
+        self.assertTrue(all(len(batch) <= 64 and sum(map(len, batch)) <= 60000 for batch in recorded))
+        self.assertTrue(any(len(batch) == 64 for batch in recorded))
+        self.assertCountEqual([text for batch in recorded for text in batch], texts)
+        expected = np.array([[i + 1, 1] for i in range(len(texts))], dtype=np.float64)
+        expected /= np.linalg.norm(expected, axis=1, keepdims=True)
+        np.testing.assert_allclose(vectors, expected, rtol=1e-6)
+        mismatched = True
+        later_started.clear()
+        with patch.object(gateway, "_post", side_effect=response), self.assertRaisesRegex(RuntimeError, "dimensions between batches"):
+            gateway.embed(texts)
+
     def test_embeddings_sorted_normalized_and_invalid_vectors_rejected(self):
         gateway = Gateway(Settings(api_key="offline-test-token"))
         good = {"data": [{"index": 1, "embedding": [0, 5]}, {"index": 0, "embedding": [3, 0]}]}

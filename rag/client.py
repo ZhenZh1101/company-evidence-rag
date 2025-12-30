@@ -14,13 +14,13 @@ class Gateway:
     def _post(self, route, payload):
         if not self.settings.api_key:
             raise RuntimeError('Set RAG_API_KEY or configure gateway.auth.token in ~/.openclaw/openclaw.json.')
-        encoded = json.dumps(payload).encode()
+        encoded = json.dumps(payload, ensure_ascii=False).encode()
         # Prevent HTTP redirects from forwarding Authorization to another destination.
         class NoRedirect(request.HTTPRedirectHandler):
             def redirect_request(self, *args, **kwargs):
                 return None
         opener = request.build_opener(NoRedirect)
-        for attempt in range(3):
+        for attempt in range(5):
             req = request.Request(self.settings.base_url + '/' + route, encoded,
                                   {'Authorization': 'Bearer ' + self.settings.api_key,
                                    'Content-Type': 'application/json'})
@@ -28,7 +28,7 @@ class Gateway:
                 with opener.open(req, timeout=self.settings.timeout) as response:
                     return json.load(response)
             except error.HTTPError as exc:
-                if exc.code in (429, 500, 502, 503, 504) and attempt < 2:
+                if exc.code in (429, 500, 502, 503, 504) and attempt < 4:
                     time.sleep(2 ** attempt)
                     continue
                 raise RuntimeError(f'Gateway {route} returned HTTP {exc.code}.') from None
@@ -53,7 +53,7 @@ class Gateway:
         batches.append(batch)
         if len(batches) == 1:
             return self._embed_batch(batches[0])
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=2) as pool:
             parts = list(pool.map(self._embed_batch, batches))
         if len({part.shape[1] for part in parts}) != 1:
             raise RuntimeError('Gateway changed embedding dimensions between batches.')

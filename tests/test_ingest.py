@@ -42,6 +42,32 @@ class IngestTests(unittest.TestCase):
             self.assertIn("Sales | 10,876 | 10,351", table.text)
             self.assertTrue(any("Final paragraph" in s.text for s in segments))
 
+    def test_material_directory_snapshots_do_not_inherit_document_dates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records = []
+            for name, category, item_url, capture_url, attachment in [
+                ("annual", "annual_report", "https://example.com/annual.pdf", "https://example.com/", True),
+                ("quarterly", "quarterly_results", "https://example.com/quarterly#Q3-2024", "https://example.com/quarterly", True),
+                ("event", "earnings_call", "https://example.com/event", "https://example.com/event", False),
+                ("article", "news", "https://example.com/news", "https://example.com/news", True),
+            ]:
+                folder = root / name
+                folder.mkdir()
+                (folder / "page.txt").write_text("Future 2026 homepage content" if name in {"annual", "quarterly"} else "Actual dated body")
+                files = [{"path": "page.txt", "kind": "readable_text", "source_url": capture_url}]
+                if attachment:
+                    (folder / "report.pdf").write_bytes(b"%PDF")
+                    files.append({"path": "report.pdf", "kind": "attachment", "source_url": item_url if name == "annual" else "https://example.com/attachment.pdf"})
+                (folder / "meta.json").write_text(json.dumps({"url": item_url, "files": files}))
+                records.append({"folder": name, "category": category, "publication_date": "2024-10-24"})
+            (root / "index.json").write_text(json.dumps(records))
+            sources, report = discover(root)
+            self.assertEqual({s.path.parent.name for s in sources if s.path.name == "page.txt"}, {"event", "article"})
+            self.assertEqual(sum(s.path.name == "report.pdf" for s in sources), 3)
+            self.assertEqual(sum("snapshot is not dated document evidence" in r["reason"] for r in report), 2)
+            self.assertFalse(any(r.get("kind") == "error" for r in report))
+
     def test_pdf_ocr_only_reads_blank_pages_and_preserves_order(self):
         calls = []
 
