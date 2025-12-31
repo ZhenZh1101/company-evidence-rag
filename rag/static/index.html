@@ -26,8 +26,8 @@
       <div class="eyebrow">DOCUMENT LIBRARY</div>
       <div class="metrics"><div class="metric"><strong id="doc-count">—</strong><span>已加载文档</span></div><div class="metric"><strong id="chunk-count">—</strong><span>原文片段</span></div></div>
       <div class="scope-section"><h3>公司范围</h3><div id="companies" class="company-list"><span class="subtle">正在读取…</span></div><button type="button" id="clear-companies" class="quiet-button">重置为全部公司</button><div class="subtle" style="margin-top:8px">未勾选时检索全部公司</div></div>
-      <div class="scope-section"><h3>文档发布日期</h3><div class="date-row"><label class="date-field">开始日期<input id="date-from" type="date"></label><label class="date-field">结束日期<input id="date-to" type="date"></label></div></div>
-      <div class="scope-note">日期筛选依据文档的发布日期。财报覆盖期间可能不同；请在问题中明确所需年度或季度。</div>
+      <div class="scope-section"><h3>披露 / 事件日期</h3><div class="date-row"><label class="date-field">开始日期<input id="date-from" type="date"></label><label class="date-field">结束日期<input id="date-to" type="date"></label></div></div>
+      <div class="scope-note">采用归档标注的披露、活动或生效日期，具体依据见原文证据；不等同于财报期间或已核实的首次公开日。未知日期材料会被日期筛选排除。</div>
     </aside>
     <main>
       <div class="eyebrow">EVIDENCE-BASED RESEARCH</div>
@@ -105,6 +105,8 @@
       top.append(element('span', '', source.publication_date || '发布日期未标注'));
       card.append(top, element('h3', 'source-title', source.title || '未命名文档'));
       if (source.locator) card.append(element('div', 'source-location', source.locator));
+      if (source.date_basis) card.append(element('div', 'source-location', `日期依据：${source.date_basis}`));
+      if (source.publication_period) card.append(element('div', 'source-location', `归档期间：${source.publication_period}`));
       if (source.source_url) {
         try {
           const url = new URL(source.source_url);

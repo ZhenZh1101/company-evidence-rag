@@ -18,12 +18,13 @@ def output(value):
 
 def ingest(args, store):
     from .ingest import discover, extract, chunk_segments
-    report = dict(started_at=datetime.now(timezone.utc).isoformat(), imported=0, unchanged=0, failures=[], warnings=[], skipped=[], roots=[])
+    report = dict(started_at=datetime.now(timezone.utc).isoformat(), imported=0, unchanged=0, failures=[], discovery_errors=[], warnings=[], skipped=[], roots=[])
     parsed = {}
     for root_arg in args.paths:
         root = Path(root_arg).expanduser().resolve()
         sources, skipped = discover(root, args.company)
         report['skipped'].extend(skipped)
+        report['discovery_errors'].extend(entry for entry in skipped if entry.get('kind') == 'error')
         report['roots'].append(str(root))
         if args.limit:
             sources = sources[:args.limit]
@@ -32,7 +33,8 @@ def ingest(args, store):
                 with source.path.open('rb') as stream:
                     sha = hashlib.file_digest(stream, 'sha256').hexdigest()
                 ocr = getattr(args, 'ocr', False)
-                fingerprint = digest(('parser-v2-ocr|' if ocr else 'parser-v1|') + sha + json.dumps(asdict(source), default=str, sort_keys=True))
+                parser_version = 'html-v2|' if source.path.suffix.lower() in {'.html', '.htm'} else ('parser-v2-ocr|' if ocr else 'parser-v1|')
+                fingerprint = digest(parser_version + sha + json.dumps(asdict(source), default=str, sort_keys=True))
                 if store.unchanged(source.key, fingerprint):
                     report['unchanged'] += 1
                     continue
@@ -67,8 +69,8 @@ def ingest(args, store):
     report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-    output({k: v if k not in ('failures','warnings','skipped') else len(v) for k,v in report.items()})
-    return bool(report['failures'])
+    output({k: v if k not in ('failures','discovery_errors','warnings','skipped') else len(v) for k,v in report.items()})
+    return bool(report['failures'] or report['discovery_errors'])
 
 
 def main():

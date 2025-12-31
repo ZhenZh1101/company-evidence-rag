@@ -184,6 +184,26 @@ class IngestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "No extractable text"):
                 extract(sources[0])
 
+    def test_ixbrl_hidden_resources_removed_but_visible_facts_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "filing.htm"
+            path.write_text("""<html><body>
+              <div style=" DISPLAY : none !important; "><ix:header><ix:resources>
+                <xbrli:context id="c1"><xbrldi:explicitMember>noc:AllOtherGeographicRegionDomain</xbrldi:explicitMember></xbrli:context>
+              </ix:resources></ix:header></div>
+              <ix:header><ix:resources>UNSTYLED RESOURCE</ix:resources></ix:header>
+              <xbrli:unit id="usd"><xbrli:measure>iso4217:USD</xbrli:measure></xbrli:unit>
+              <div style="color:black;visibility:hidden">INVISIBLE TEXT</div>
+              <p><ix:nonnumeric>Consolidated results</ix:nonnumeric> in millions</p>
+              <table><tr><th>Period</th><th>Sales</th></tr><tr><td>Q2 2026</td><td><ix:nonfraction contextRef="c1">10,876</ix:nonfraction></td></tr></table>
+              <ix:continuation>Visible explanatory note</ix:continuation>
+            </body></html>""")
+            text = "\n".join(s.text for s in extract(source(path)))
+            for hidden in ["AllOtherGeographicRegionDomain", "UNSTYLED RESOURCE", "iso4217", "INVISIBLE TEXT"]:
+                self.assertNotIn(hidden, text)
+            for visible in ["Consolidated results", "in millions", "10,876", "Visible explanatory note"]:
+                self.assertIn(visible, text)
+
     def test_html_removes_hidden_prompt_boilerplate_but_keeps_div_prose(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "filing.html"

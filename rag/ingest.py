@@ -244,8 +244,17 @@ def _html_table(table) -> list[list[str]]:
 def _html(path: Path) -> list[Segment]:
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(path.read_bytes(), "html.parser")
-    for tag in soup.select("script, style, nav, header, footer, noscript, svg, form, ix\\:hidden, [hidden], [aria-hidden='true']"):
-        tag.decompose()
+    hidden_style = re.compile(r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\s*(?:!important\s*)?(?:;|$)", re.I)
+    noncontent_tags = {"script", "style", "nav", "header", "footer", "noscript", "svg", "form",
+                       "ix:hidden", "ix:header", "ix:resources", "ix:references", "link:schemaref", "link:linkbaseref"}
+    for tag in list(soup.find_all()):
+        # A parent's removal also decomposes its descendants in this snapshot.
+        if tag.name is None or tag.attrs is None:
+            continue
+        if (tag.name in noncontent_tags or tag.name.startswith(("xbrli:", "xbrldi:"))
+                or tag.has_attr("hidden") or str(tag.get("aria-hidden", "")).lower() == "true"
+                or hidden_style.search(tag.get("style", ""))):
+            tag.decompose()
     main = soup.find("article") or soup.find("main") or soup.body or soup
     segments, section, paragraphs = [], "document", []
 
