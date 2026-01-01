@@ -25,7 +25,7 @@
     <aside aria-label="检索范围">
       <div class="eyebrow">DOCUMENT LIBRARY</div>
       <div class="metrics"><div class="metric"><strong id="doc-count">—</strong><span>已加载文档</span></div><div class="metric"><strong id="chunk-count">—</strong><span>原文片段</span></div></div>
-      <div class="scope-section"><h3>公司范围</h3><div id="companies" class="company-list"><span class="subtle">正在读取…</span></div><button type="button" id="clear-companies" class="quiet-button">重置为全部公司</button><div class="subtle" style="margin-top:8px">未勾选时检索全部公司</div></div>
+      <div class="scope-section"><h3>公司范围</h3><div id="companies" class="company-list"><span class="subtle">正在读取…</span></div><button type="button" id="clear-companies" class="quiet-button">重置为自动识别</button><div class="subtle" style="margin-top:8px">未勾选时按问题自动识别公司；跨公司比较请勾选全部目标公司。</div></div>
       <div class="scope-section"><h3>披露 / 事件日期</h3><div class="date-row"><label class="date-field">开始日期<input id="date-from" type="date"></label><label class="date-field">结束日期<input id="date-to" type="date"></label></div></div>
       <div class="scope-note">采用归档标注的披露、活动或生效日期，具体依据见原文证据；不等同于财报期间或已核实的首次公开日。未知日期材料会被日期筛选排除。</div>
     </aside>
@@ -155,7 +155,8 @@
       if (!count) $('sources').append(element('p', 'subtle', '本次没有可展示的原文证据。'));
       $('queries').replaceChildren(...(data.queries || []).map(query => element('li', '', query)));
       $('query-details').hidden = !(data.queries || []).length;
-      $('result-meta').textContent = `${count} 条材料 · ${elapsed.toFixed(1)} 秒`;
+      const scope = data.filters?.companies?.join(' / ') || '全部公司';
+      $('result-meta').textContent = `${scope} · ${count} 条材料 · ${elapsed.toFixed(1)} 秒`;
       $('result').hidden = false; $('result').focus({preventScroll: true});
     }
     $('ask-form').addEventListener('submit', async (event) => {

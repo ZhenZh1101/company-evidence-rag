@@ -12,7 +12,7 @@ from rag.pipeline import RAG, normalized
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', default='data/evaluation.json')
-    parser.add_argument('--generation', action='store_true', help='Also run three real Chinese question/answer checks')
+    parser.add_argument('--generation', action='store_true', help='Also run four real Chinese question/answer checks')
     args = parser.parse_args()
     settings = Settings.from_env()
     cases = json.loads((Path(__file__).resolve().parents[1] / 'tests/golden.json').read_text())
@@ -42,6 +42,7 @@ def main():
             questions = [
                 ('cbrs_chinese', 'CBRS 2026 年第一季度 GAAP 收入和 core 收入分别是多少？请说明单位和口径。', ['CBRS']),
                 ('noc_chinese', 'NOC 2026 年第二季度的销售额和上半年累计销售额分别是多少？请不要混淆期间。', ['NOC']),
+                ('comparison', '分别列出 CBRS 2026 年第一季度 GAAP 收入与 NOC 2026 年第二季度公司总销售额，统一用百万美元，并注明期间不同。', ['CBRS', 'NOC']),
                 ('unknown', 'CBRS 2028 年第四季度已经实现的经审计营业收入是多少？', ['CBRS'])]
             for case_id, question, companies in questions:
                 response = rag.ask(question, companies=companies)

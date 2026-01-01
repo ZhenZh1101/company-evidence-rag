@@ -70,6 +70,17 @@ class StoreAndRAGTests(unittest.TestCase):
         self.assertEqual(results["hybrid"]["document_id"], "shared")
         self.assertEqual(results["hybrid"]["score"], round(2 / 62, 6))
 
+    def test_company_specific_subqueries_do_not_search_the_other_company(self):
+        self.add('cb', 'Quarter one revenue.', company='CBRS')
+        self.add('noc', 'Quarter two sales.', company='NOC')
+        gateway = FakeGateway(replies=[json.dumps({'queries': ['CBRS quarter one revenue', 'NOC quarter two sales']})])
+        with patch.object(self.store, 'lexical', wraps=self.store.lexical) as search:
+            RAG(self.store, gateway).search('Compare CBRS and NOC revenue', companies=['CBRS','NOC'], mode='lexical')
+        calls = [(call.args[0], call.kwargs['companies']) for call in search.call_args_list]
+        self.assertEqual(calls[2:], [('CBRS quarter one revenue', ['CBRS']), ('NOC quarter two sales', ['NOC'])])
+        planner_data = json.loads(gateway.messages[0][1]['content'])
+        self.assertEqual(set(planner_data['company_document_titles']), {'CBRS','NOC'})
+
     def test_company_dates_and_unknown_dates_filter_all_retrievers(self):
         self.add("current", "Revenue increased to 100 million.")
         self.add("historical", "Revenue increased to 80 million.", publication_date="2025-07-21")
