@@ -81,6 +81,20 @@ class StoreAndRAGTests(unittest.TestCase):
         planner_data = json.loads(gateway.messages[0][1]['content'])
         self.assertEqual(set(planner_data['company_document_titles']), {'CBRS','NOC'})
 
+    def test_comparison_selector_preserves_full_evidence_and_relabels_citations(self):
+        cb = 'CBRS revenue 193.4 million in quarter one.'
+        noc = 'NOC revenue context. ' * 80 + 'Total sales 10,876 million in quarter two.'
+        self.add('cb', cb, company='CBRS')
+        self.add('noc', noc, company='NOC')
+        answer = {'answer':'NOC sales 10,876 million [S1]. CBRS revenue 193.4 million [S2].',
+                  'insufficient_evidence':False,'citations':[{'label':'S1','quote':'Total sales 10,876 million'}, {'label':'S2','quote':cb}]}
+        gateway = FakeGateway(replies=[json.dumps({'labels':['S2','S1']}),json.dumps(answer)])
+        result = RAG(self.store,gateway).ask('Compare CBRS and NOC revenue',companies=['CBRS','NOC'],mode='lexical',rewrite=False)
+        self.assertFalse(result['insufficient_evidence'])
+        self.assertEqual([c['source']['company'] for c in result['citations']], ['NOC','CBRS'])
+        selection_input = json.loads(gateway.messages[0][1]['content'])
+        self.assertEqual(selection_input['evidence'][1]['text'], noc)
+
     def test_company_dates_and_unknown_dates_filter_all_retrievers(self):
         self.add("current", "Revenue increased to 100 million.")
         self.add("historical", "Revenue increased to 80 million.", publication_date="2025-07-21")

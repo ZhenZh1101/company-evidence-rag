@@ -238,7 +238,48 @@ def _html_table(table) -> list[list[str]]:
             column += colspan
         if cells:
             rows.append([cells.get(col, "") for col in range(max(cells) + 1)])
-    return rows
+    # SEC HTML uses many spacer columns. Remove only columns empty in every row.
+    width = max((len(row) for row in rows), default=0)
+    keep = [col for col in range(width) if any(col < len(row) and row[col].strip() for row in rows)]
+    return [[row[col] if col < len(row) else "" for col in keep] for row in rows]
+
+
+def _table_context(table) -> str:
+    previous = table.find_previous(["h1", "h2", "h3", "p"])
+    semantic = " ".join(previous.stripped_strings)[:500] if previous else ""
+    captions, remaining, inspected, boundary = [], 600, 0, False
+    node = table
+    # Caption DIVs often precede the table's wrapper, not the table itself.
+    for _ in range(4):  # Table plus at most three parent wrappers.
+        for sibling in node.previous_siblings:
+            inspected += 1
+            if inspected > 40:
+                break
+            if (getattr(sibling, "name", None) in {"table", "hr"}
+                    or (hasattr(sibling, "find_all") and sibling.find(["table", "hr"]))):
+                boundary = True
+                break
+            text = " ".join(sibling.stripped_strings) if hasattr(sibling, "stripped_strings") else str(sibling).strip()
+            if text:
+                # Walking backwards: retain the text closest to this table.
+                piece = text[-remaining:]
+                captions.append(piece)
+                remaining -= len(piece) + 1
+                if remaining <= 0:
+                    break
+        if boundary or remaining <= 0 or inspected > 40:
+            break
+        node = node.parent
+        if node is None or node.name in {"body", "html", "[document]"}:
+            break
+    nearby = "\n".join(reversed(captions))
+    unit_pattern = re.compile(r"\b(?:in\s+(?:thousands|millions|billions)|per[ -]+share(?:\s+amounts)?|(?:U\.?S\.?\s*)?dollars)\b", re.I)
+    units = lambda text: {re.sub(r"\s+", " ", match.group().lower()) for match in unit_pattern.finditer(text)}
+    if units(nearby) and (units(nearby) - units(semantic) or (boundary and semantic not in nearby)):
+        return nearby
+    if units(semantic) and boundary and semantic not in nearby:
+        return ""  # Do not borrow a unit caption from a preceding table.
+    return semantic
 
 
 def _html(path: Path) -> list[Segment]:
@@ -267,9 +308,7 @@ def _html(path: Path) -> list[Segment]:
     table_segments = []
     # Extract children before removing layout parents, preserving actual nested tables.
     for table_number, table in reversed(list(enumerate(main.find_all("table"), 1))):
-        previous = table.find_previous(["h1", "h2", "h3", "p"])
-        context = " ".join(previous.stripped_strings)[:500] if previous else ""
-        text = _table_text(_html_table(table), context)
+        text = _table_text(_html_table(table), _table_context(table))
         if text:
             table_segments.append(Segment(text, f"table {table_number}"))
         table.decompose()

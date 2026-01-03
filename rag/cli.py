@@ -33,7 +33,7 @@ def ingest(args, store):
                 with source.path.open('rb') as stream:
                     sha = hashlib.file_digest(stream, 'sha256').hexdigest()
                 ocr = getattr(args, 'ocr', False)
-                parser_version = 'html-v2|' if source.path.suffix.lower() in {'.html', '.htm'} else ('parser-v2-ocr|' if ocr else 'parser-v1|')
+                parser_version = 'html-v3|' if source.path.suffix.lower() in {'.html', '.htm'} else ('parser-v2-ocr|' if ocr else 'parser-v1|')
                 fingerprint = digest(parser_version + sha + json.dumps(asdict(source), default=str, sort_keys=True))
                 if store.unchanged(source.key, fingerprint):
                     report['unchanged'] += 1

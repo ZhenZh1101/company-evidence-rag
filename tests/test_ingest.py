@@ -184,6 +184,42 @@ class IngestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "No extractable text"):
                 extract(sources[0])
 
+    def test_html_removes_only_globally_empty_columns_and_pads_ragged_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "columns.html"
+            path.write_text("""<table>
+                <tr><th>Metric</th><th></th><th>2026</th><th></th><th></th><th>2025</th><th></th></tr>
+                <tr><td>Sales</td><td></td><td>$</td><td>193406</td><td></td><td>$</td><td>99512</td></tr>
+                <tr><td>Only prior</td><td></td><td></td><td></td><td></td><td>$</td><td>123</td></tr>
+                <tr><td>Ragged</td></tr>
+            </table>""")
+            table = next(s for s in extract(source(path)) if s.locator == "table 1")
+            self.assertIn("Metric | 2026 |  | 2025 |", table.text)
+            self.assertIn("Sales | $ | 193406 | $ | 99512", table.text)
+            self.assertIn("Only prior |  |  | $ | 123", table.text)
+            self.assertIn("Ragged |  |  |  |", table.text)
+
+    def test_div_caption_units_follow_wrappers_but_not_prior_table_boundaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "captions.html"
+            path.write_text("""<html><body>
+                <div>CEREBRAS SYSTEMS INC.</div><div>RECONCILIATION</div>
+                <div>(unaudited)</div><div>(in thousands)</div>
+                <div><div><table><tr><th>Metric</th><th>2026</th></tr><tr><td>Revenue</td><td>193406</td></tr></table></div></div>
+                <table><tr><td>Boundary target</td><td>17</td></tr></table>
+                <p>Old units in millions</p><hr>
+                <table><tr><td>After rule target</td><td>42</td></tr></table>
+                <div>(in millions)</div><table><tr><td>Fresh caption target</td><td>63</td></tr></table>
+            </body></html>""")
+            tables = [s for s in extract(source(path)) if s.locator.startswith("table ")]
+            first = next(s for s in tables if "193406" in s.text)
+            self.assertIn("(in thousands)", first.text)
+            self.assertIn("(unaudited)", first.text)
+            self.assertIn("2026", first.text)
+            self.assertNotIn("in thousands", next(s for s in tables if "Boundary target" in s.text).text)
+            self.assertNotIn("in millions", next(s for s in tables if "After rule target" in s.text).text)
+            self.assertIn("(in millions)", next(s for s in tables if "Fresh caption target" in s.text).text)
+
     def test_ixbrl_hidden_resources_removed_but_visible_facts_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "filing.htm"
