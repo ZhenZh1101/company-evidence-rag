@@ -1,4 +1,4 @@
-"""Local web interface; evidence is rendered as text, never trusted HTML."""
+"""Local web interface with safe Markdown answers and plain-text evidence."""
 
 from datetime import date
 import logging
@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
+from markdown_it import MarkdownIt
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .client import Gateway
@@ -53,6 +54,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     app = FastAPI(title="公司文档 RAG", docs_url=None, redoc_url=None)
     gateway = Gateway(settings)
+    # Disable raw HTML and remote images; reference definitions must not swallow [S1][S2].
+    markdown = MarkdownIt('js-default', {'html': False, 'breaks': True}).disable(['image', 'reference'])
     logger = logging.getLogger(__name__)
 
     @app.middleware("http")
@@ -109,7 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def ask(payload: AskRequest):
         try:
             with Store(settings.db_path) as store:
-                return RAG(store, gateway).ask(
+                result = RAG(store, gateway).ask(
                     question=payload.question,
                     companies=payload.companies,
                     date_from=payload.date_from.isoformat() if payload.date_from else None,
@@ -119,6 +122,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     rewrite=payload.rewrite,
                     mode=payload.mode,
                 )
+                result['answer_html'] = markdown.render(result['answer'])
+                return result
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         except Exception as exc:

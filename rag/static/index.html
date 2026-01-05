@@ -14,6 +14,17 @@
     @media(max-width:950px){main{padding:30px 26px}.layout{grid-template-columns:230px minmax(0,1fr)}aside{padding:28px 19px}.evidence{grid-template-columns:1fr}h1{font-size:26px}.empty{gap:16px}}
     @media(max-width:680px){header{padding:17px 20px;align-items:flex-start}.brand strong{font-size:16px}.brand small{font-size:11px}.status{font-size:11px;max-width:120px;padding-top:4px}.layout{display:block}aside{border-right:0;border-bottom:1px solid var(--line);padding:20px}.metrics{margin:12px 0;max-width:280px}.scope-section{margin-top:17px}.company-list{display:flex;flex-wrap:wrap;max-height:150px}.company-option{padding:7px 10px}.date-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.scope-note{margin-top:16px;padding-top:12px}.scope-section h3{margin-bottom:7px}main{padding:26px 20px 40px}h1{font-size:25px}.lede{font-size:13px}.empty{margin-top:30px;grid-template-columns:1fr;gap:18px}.step{display:none}.question-footer{align-items:flex-end}.question-footer span{max-width:140px;font-size:11px}.primary{padding:10px 17px}.answer-card{padding:18px}.options{gap:11px}.result-heading{align-items:flex-start}.result-meta{text-align:right}}
     @media(prefers-reduced-motion:reduce){.spinner{animation:none}}
+    .answer{white-space:normal}.answer.plain-text{white-space:pre-wrap}
+    .answer>:first-child{margin-top:0}.answer>:last-child{margin-bottom:0}
+    .answer p{margin:0 0 1em}.answer h1,.answer h2,.answer h3,.answer h4,.answer h5,.answer h6{margin:1.3em 0 .6em;line-height:1.45;letter-spacing:normal}
+    .answer h1{font-size:1.5em}.answer h2{font-size:1.3em}.answer h3{font-size:1.15em}.answer h4,.answer h5,.answer h6{font-size:1em}
+    .answer ul,.answer ol{margin:.6em 0 1em;padding-left:1.6em}.answer li+li{margin-top:.3em}.answer li>p{margin:.3em 0}
+    .answer blockquote{margin:1em 0;padding:.3em 1em;border-left:3px solid #9fc6ba;background:var(--pale);color:#3e5961}
+    .answer table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse;margin:1em 0;font-size:.93em}
+    .answer th,.answer td{padding:9px 13px;border:1px solid var(--line);text-align:left;vertical-align:top}.answer th{background:var(--pale);font-weight:650}.answer tr:nth-child(even) td{background:#fafcfc}
+    .answer code{font: .88em ui-monospace,SFMono-Regular,monospace;background:#edf1f2;border-radius:4px;padding:.15em .35em}
+    .answer pre{overflow-x:auto;max-width:100%;white-space:pre;background:#f5f7f8;border:1px solid var(--line);border-radius:8px;padding:14px;line-height:1.6}
+    .answer pre code{padding:0;background:none;white-space:pre;overflow-wrap:normal}.answer hr{border:0;border-top:1px solid var(--line);margin:1.4em 0}
   </style>
 </head>
 <body>
@@ -134,7 +145,11 @@
       card.append(details); $('sources').append(card);
     }
     function showResult(data, elapsed) {
-      $('answer').textContent = data.answer || '服务未返回回答。';
+      const rendered = typeof data.answer_html === 'string';
+      $('answer').classList.toggle('plain-text', !rendered);
+      // Only insert HTML produced by the server's HTML-disabled Markdown renderer.
+      if (rendered) $('answer').innerHTML = data.answer_html;
+      else $('answer').textContent = data.answer || '服务未返回回答。';
       const warnings = (data.warnings || []).map(String);
       if (data.insufficient_evidence) warnings.unshift('本次检索的证据不足，无法完整回答该问题。请调整公司、时间范围或问题表述。');
       $('warning').textContent = warnings.join(' '); $('warning').hidden = !warnings.length;

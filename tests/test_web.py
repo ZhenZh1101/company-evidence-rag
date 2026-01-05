@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
+from bs4 import BeautifulSoup
 
 from rag.config import Settings
 from rag.ingest import Segment, Source
@@ -87,6 +88,39 @@ class WebTests(unittest.TestCase):
             response = self.client.post("/api/ask", json=payload)
         self.assertEqual(response.status_code, 502)
         self.assertNotIn("TEST_SECRET", response.text + " ".join(logs.output))
+
+    def test_markdown_answer_formats_tables_lists_and_code_without_losing_raw_answer(self):
+        answer = '## 结果\n\n**收入** [S1]\n\n- 第一项\n- 第二项\n\n| 公司 | 收入 |\n| --- | ---: |\n| NOC | 100 |\n\n> 原文说明\n\n```python\nprint("<value>")\n```'
+        with patch('rag.web.RAG.ask', return_value={'answer':answer}):
+            response = self.client.post('/api/ask', json={'question':'Revenue'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['answer'], answer)
+        document = BeautifulSoup(response.json()['answer_html'], 'html.parser')
+        for tag in ('h2','strong','ul','table','blockquote','pre','code'):
+            self.assertIsNotNone(document.find(tag), tag)
+        self.assertEqual(document.select_one('tbody td').text, 'NOC')
+        self.assertEqual(document.select_one('pre code').text, 'print("<value>")\n')
+        self.assertIn('[S1]', document.get_text())
+
+    def test_markdown_escapes_html_blocks_unsafe_links_images_and_citation_references(self):
+        answer = '''<script>alert(1)</script><img src=x onerror=alert(2)>
+
+[bad](javascript:alert(3)) [encoded](jav&#x61;script:alert(4)) [file](file:///etc/passwd)
+[data](data:text/html;base64,PHNjcmlwdD4=) ![pixel](https://example.com/track.png)
+[safe](https://example.com/report) [S1][S2]
+
+[S2]: https://example.com/other
+'''
+        with patch('rag.web.RAG.ask', return_value={'answer':answer}):
+            response = self.client.post('/api/ask', json={'question':'Revenue'})
+        document = BeautifulSoup(response.json()['answer_html'], 'html.parser')
+        self.assertIsNone(document.find(['script','img','iframe']))
+        for link in document.find_all('a'):
+            self.assertTrue(link['href'].startswith('https://'))
+            self.assertFalse(any(name.startswith('on') for name in link.attrs))
+        self.assertIn('<script>alert(1)</script>', document.get_text())
+        self.assertIn('[S1][S2]', document.get_text())
+        self.assertIsNotNone(document.find('a', href='https://example.com/report'))
 
 
 if __name__ == "__main__":
