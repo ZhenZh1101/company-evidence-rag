@@ -144,6 +144,86 @@ class IngestTests(unittest.TestCase):
             self.assertEqual({s.path.name for s in sources}, {"noc-20260630.htm", "exhibit99.htm"})
             self.assertEqual(len(report), len(names) - 2)
 
+    def test_flat_sec_and_rendered_xml_keep_filing_content_without_mirrors(self):
+        cases = [
+            ("flat", "sec_filings", "report.htm", ["report.htm", "exhibit.htm", "exhibit99.txt", "R1.htm", "123.txt", "123.pdf", "123.rtf.docx", "123.xls", "html.html", "article.html", "page.txt"], {"report.htm", "exhibit.htm", "exhibit99.txt"}),
+            ("ownership", "sec_filings", "xsl/ownership.xml", ["ownership.xml", "123.pdf", "123.rtf.docx", "123.xls", "html.html"], {"123.pdf"}),
+            ("amkr", "SEC filings", "", ["123.pdf", "123.docx", "123.xls", "filing.html", "filing_detail.html", "filing_detail.txt", "source_listing_row.html"], {"123.pdf"}),
+            ("rendered", "sec_filings", "xsl/ownership.xml", ["sec_documents/ownership.xml", "primary_document.html", "exhibit.htm", "complete_submission.txt", "sec_filing_index.html", "ir_filing.pdf", "ir_filing.docx", "ir_filing.xlsx"], {"primary_document.html", "exhibit.htm"}),
+            ("native", "sec_filings", "report.htm", ["sec_documents/report.htm", "primary_document.html", "primary_document.pdf", "primary_document.txt", "ir_filing.pdf"], {"sec_documents/report.htm", "primary_document.pdf", "primary_document.txt"}),
+            ("text_primary", "sec_filings", "filing.txt", ["sec_documents/filing.txt", "primary_document.txt", "sec_documents/123.txt", "sec_documents/exhibit99.txt"], {"sec_documents/filing.txt", "primary_document.txt", "sec_documents/exhibit99.txt"}),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            records = []
+            for name, category, primary, filenames, _ in cases:
+                folder = root / name
+                folder.mkdir()
+                for filename in filenames:
+                    path = folder / filename
+                    path.parent.mkdir(exist_ok=True)
+                    path.write_text("Filing content")
+                (folder / "meta.json").write_text(json.dumps({"accession": "123", "sec_submission": {"primaryDocument": primary}, "files": [{"path": f} for f in filenames]}))
+                records.append({"folder": name, "category": category})
+            (root / "inventory.json").write_text(json.dumps(records))
+            sources, report = discover(root)
+            self.assertFalse(any(r.get("kind") == "error" for r in report), report)
+            for name, _, _, _, expected in cases:
+                self.assertEqual({str(s.path.relative_to(root / name)) for s in sources if s.path.is_relative_to(root / name)}, expected)
+
+    def test_news_languages_and_material_collection_selection(self):
+        cases = [
+            ("news", "ir_news", ["page.html", "page.txt", "release.pdf"], {"page.html"}),
+            ("amkr_news", "press_release", ["page.html", "page.txt"], {"page.html"}),
+            ("localized", "corporate_news", ["source.html", "content.txt", "page_ko.html", "content_ko.txt", "page_ja.html", "content_ja.txt", "source_url.txt", "article.excerpt.txt", "webcast.txt"], {"source.html", "page_ko.html", "page_ja.html"}),
+            ("quarterly", "quarterly_results", ["source.html", "source.txt", "results.pdf"], {"results.pdf"}),
+            ("event", "earnings_call", ["source.html", "source.txt", "presentation.pdf"], {"source.html", "presentation.pdf"}),
+            ("nokia", "financial_results", ["article.html", "page.html", "page.txt", "results.pdf"], {"results.pdf"}),
+            ("vistra", "news", ["article.html", "page.html", "page.txt", "release.pdf", "source_page_1.html"], {"article.html"}),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records = []
+            for name, category, filenames, _ in cases:
+                folder = root / name
+                folder.mkdir()
+                for filename in filenames:
+                    (folder / filename).write_text("Published body")
+                (folder / "meta.json").write_text(json.dumps({"files": [{"path": f} for f in filenames]}))
+                records.append({"folder": name, "category": category})
+            (root / "index.json").write_text(json.dumps(records))
+            sources, report = discover(root)
+            self.assertFalse(any(r.get("kind") == "error" for r in report), report)
+            for name, _, _, expected in cases:
+                self.assertEqual({s.path.name for s in sources if s.path.parent.name == name}, expected)
+
+    def test_nokia_linked_attachments_do_not_inherit_parent_dates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root / "blog"
+            folder.mkdir()
+            page_url = "https://example.com/blog"
+            files = [
+                {"path": "article.html", "kind": "readable_offline_html", "source_url": page_url},
+                {"path": "later.pdf", "kind": "attachment", "source_url": "https://example.com/later.pdf"},
+                {"path": "dated.pdf", "kind": "attachment", "source_url": "https://example.com/dated.pdf", "publication_date": "2025-07-04", "date_basis": "Document date"},
+                {"path": "direct.pdf", "kind": "attachment", "source_url": page_url},
+            ]
+            for f in files:
+                (folder / f["path"]).write_text("Document")
+            (folder / "meta.json").write_text(json.dumps({"ticker": "NOK", "url": page_url, "files": files}))
+            (root / "index.json").write_text(json.dumps([{"folder": "blog", "category": "blogs", "url": page_url, "publication_date": "2024-10-21", "date_basis": "Parent CMS publication date"}]))
+            sources, report = discover(root)
+            self.assertEqual(report, [])
+            by_name = {s.path.name: s for s in sources}
+            self.assertIsNone(by_name["later.pdf"].publication_date)
+            self.assertIsNone(by_name["later.pdf"].publication_period)
+            self.assertIn("unverified", by_name["later.pdf"].date_basis)
+            self.assertEqual(by_name["later.pdf"].aliases[0]["publication_date"], "2024-10-21")
+            self.assertEqual(by_name["dated.pdf"].publication_date, "2025-07-04")
+            self.assertEqual(by_name["direct.pdf"].publication_date, "2024-10-21")
+            self.assertEqual(by_name["article.html"].publication_date, "2024-10-21")
+
     def test_chunk_repeats_headers_and_preserves_every_table_row(self):
         rows = [f"Metric {i} | {i * 10}.5 | {i * 9}.5" for i in range(100)]
         original = "Table context: USD millions\nMetric | 2026 | 2025\n[Rows]\n" + "\n".join(rows)

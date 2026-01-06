@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from .archive import normalize_record, read_manifest
+
 
 @dataclass
 class Source:
@@ -36,7 +38,7 @@ class Segment:
 
 
 SUPPORTED = {".html", ".htm", ".txt", ".md", ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv"}
-NOTICE_FILES = {"streaming_links.txt", "online_viewers.txt", "online_links.txt", "unavailable.txt"}
+NOTICE_FILES = {"streaming_links.txt", "online_viewers.txt", "online_links.txt", "unavailable.txt", "source_url.txt", "webcast.txt"}
 
 
 def _safe_path(root: Path, relative: str) -> Path:
@@ -68,51 +70,70 @@ def _selection_reason(path: str, candidates: set[str], category: str, meta: dict
     p = Path(path)
     if p.suffix.lower() not in SUPPORTED:
         return "Unsupported format or non-document asset"
-    if p.name in NOTICE_FILES or p.name.startswith("unavailable_") or "streaming" in p.name or "online_viewer" in p.name:
+    if p.name in NOTICE_FILES or p.name.endswith(".excerpt.txt") or p.name.startswith("unavailable_") or "streaming" in p.name or "online_viewer" in p.name:
         return "Media link/availability metadata; no transcript content"
     if category.startswith("sec_"):
         primary = Path(meta.get("sec_submission", {}).get("primaryDocument", "")).name
-        primary_path = f"sec_documents/{primary}"
-        primary_html = primary_path in candidates and Path(primary).suffix.lower() in {".html", ".htm"}
-        if p.name.endswith(("-index.html", "-index-headers.html")) or p.name in {"page.html", "ir_filing.html"}:
+        primary_paths = {primary, f"sec_documents/{primary}"} & candidates
+        primary_html = bool(primary_paths) and Path(primary).suffix.lower() in {".html", ".htm"}
+        rendered_primary = any(f"primary_document{ext}" in candidates for ext in (".html", ".pdf", ".txt"))
+        accession = meta.get("accession", "")
+        if p.name.endswith(("-index.html", "-index-headers.html")) or p.name in {
+            "page.html", "page.txt", "article.html", "ir_filing.html", "sec_filing_index.html",
+            "filing_detail.html", "filing_detail.txt", "source_listing_row.html",
+        }:
             return "SEC filing directory/detail wrapper"
-        if path.startswith("sec_documents/") and p.suffix.lower() == ".txt":
+        if p.name == "complete_submission.txt" or (accession and p.name == f"{accession}.txt"):
             return "SEC submission bundle duplicates filings and can contain encoded binary assets"
         if re.fullmatch(r"R\d+\.htm", p.name) and primary_html:
             return "SEC generated financial-table view already contained in primary filing"
-        if p.name == "filing.html" and primary_html:
+        if p.name in {"filing.html", "html.html", "primary_document.html"} and primary_html:
             return "IR HTML mirror of SEC primary filing"
+        if p.name in {"ir_filing.pdf", "ir_filing.docx", "ir_filing.xlsx"} and (primary_paths or rendered_primary):
+            return "Alternative format of SEC primary filing"
         # The IR accession-named formats transform the same filing. Keep exhibits.
-        accession = meta.get("accession", "")
-        transformed = accession and p.stem == accession and p.suffix.lower() in {".pdf", ".docx", ".xls"}
+        versions = [x for x in candidates if accession and Path(x).name in {
+            f"{accession}.pdf", f"{accession}.docx", f"{accession}.rtf.docx", f"{accession}.xls", f"{accession}.xlsx"}]
+        transformed = path in versions
         if transformed:
             if primary_html:
                 return "Alternative format of SEC primary HTML filing"
-            versions = sorted((x for x in candidates if Path(x).stem == accession and Path(x).suffix.lower() in {".pdf", ".docx", ".xls"}),
-                              key=lambda x: [".pdf", ".docx", ".xls"].index(Path(x).suffix.lower()))
+            versions.sort(key=lambda x: ([".pdf", ".docx", ".xls", ".xlsx"].index(Path(x).suffix.lower()), x))
             if versions and path != versions[0]:
                 return "Alternative format of selected SEC filing"
-        if p.name == "filing.html" and not primary_html and any(Path(x).stem == accession and Path(x).suffix.lower() == ".pdf" for x in candidates):
+        if p.name in {"filing.html", "html.html"} and not primary_html and any(Path(x).suffix.lower() == ".pdf" for x in versions):
             return "IR filing mirror; selected rendered PDF retains ownership-form labels"
     else:
         record = file_record or {}
         material_url = meta.get("url")
+        if ((category in {"financial_results", "annual_reports"} and p.name in {"page.html", "page.txt", "article.html"})
+                or (category in {"quarterly_results", "annual_report", "investor_presentation", "current_governance_document"}
+                    and p.name in {"source.html", "source.txt"})
+                or re.fullmatch(r"source_page_\d+\.html", p.name)):
+            return "Parent collection/homepage capture; snapshot is not dated document evidence"
         attachment_record = any(isinstance(f, dict) and f.get("source_url") == material_url
                                 and f.get("kind") in {"attachment", "document_attachment", "pdf_attachment", "alternative_attachment"}
                                 for f in meta.get("files", []))
         if (p.name in {"page.html", "page.txt", "article.html"}
-                and record.get("kind") in {"source_html", "rendered_html", "readable_text"}
+                and record.get("kind") in {"source_html", "rendered_html", "readable_text", "original_http_html",
+                                           "readable_offline_html", "page_text", "original_html", "article_text", "readable_article_html"}
                 and record.get("source_url") and material_url and record["source_url"] != material_url
                 and (attachment_record or category == "quarterly_results")):
             return "Parent collection/homepage capture; snapshot is not dated document evidence"
-        readable = next((x for x in ("article.html", "page.txt", "page.html") if x in candidates), None)
+        preference = ("article.html", "page.html", "page.txt") if category in {"ir_news", "press_release"} else ("article.html", "page.txt", "page.html")
+        readable = next((x for x in preference if x in candidates), None)
         if path in {"article.html", "page.txt", "page.html"} and path != readable:
+            return "Alternative webpage representation"
+        if p.name in {"content.txt", "source.txt"} and "source.html" in candidates:
+            return "Alternative webpage representation"
+        localized_text = re.fullmatch(r"content_([\w-]+)\.txt", p.name)
+        if localized_text and f"page_{localized_text[1]}.html" in candidates:
             return "Alternative webpage representation"
         if readable and p.name in {"source_listing.html", "source_fragment.html", "listing_entry.html", "listing.txt", "ir_page.html", "ir_page.txt", "ir_article.html"}:
             return "Archive listing/capture/mirror already represented by canonical article"
         if readable and (p.name.startswith("main_site_") or p.name.startswith("ir_mirror_")):
             return "Merged release mirror"
-        if p.name == "release.pdf" and category in {"ir_news", "press_releases"} and readable:
+        if p.name == "release.pdf" and category in {"ir_news", "press_releases", "news"} and readable:
             return "PDF version of the same complete press release"
     return None
 
@@ -124,19 +145,18 @@ def discover(root: Path, company: str | None = None) -> tuple[list[Source], list
         raise FileNotFoundError(root)
     report: list[dict] = []
     sources: list[Source] = []
-    index = root / "index.json" if root.is_dir() else None
-    records = json.loads(index.read_text()) if index and index.exists() else None
-    archive = isinstance(records, list) and (not records or any(isinstance(x, dict) and "folder" in x for x in records))
-    if archive:
+    records = read_manifest(root) if root.is_dir() else None
+    if records is not None:
         for item in records:
             try:
                 if not isinstance(item, dict) or not item.get("folder"):
                     raise ValueError("Archive index entry has no folder")
                 folder = _safe_path(root, item["folder"])
-                meta_path = _safe_path(folder, "meta.json")
+                meta_path = _safe_path(root, item["meta_path"]) if item.get("meta_path") else _safe_path(folder, "meta.json")
                 meta = json.loads(meta_path.read_text())
                 if not isinstance(meta, dict):
                     raise ValueError("Archive metadata must be an object")
+                item, meta = normalize_record(item, meta)
                 if item.get("status") == "unavailable" or meta.get("status") == "unavailable":
                     report.append({"path": str(folder), "reason": "Unavailable source; metadata only"})
                     continue
@@ -161,13 +181,24 @@ def discover(root: Path, company: str | None = None) -> tuple[list[Source], list
                             report.append({"path": str(path), "reason": reason})
                             continue
                         issuer = company or meta.get("ticker") or root.name.split("_")[0]
-                        source = _source(path, issuer, item, meta, f.get("source_url") or item.get("url") or meta.get("url", ""))
+                        source_item = item
+                        url = f.get("source_url") or item.get("url") or meta.get("url", "")
+                        if "publication_date" in f or "publication_period" in f:
+                            source_item = {**item, "publication_date": f.get("publication_date"),
+                                           "publication_period": f.get("publication_period"),
+                                           "date_basis": f.get("date_basis") or "Attachment date supplied by archive"}
+                        elif (issuer == "NOK" and f.get("kind") in {"attachment", "document_attachment", "pdf_attachment", "alternative_attachment"}
+                              and item.get("category", "").startswith(("blog", "editorial", "corporate_site", "corporate_event", "ir_event", "technology"))
+                              and url != (item.get("url") or meta.get("url"))):
+                            source_item = {**item, "publication_date": None, "publication_period": None,
+                                           "date_basis": "Attachment publication date unverified; parent page date does not date linked documents"}
+                        source = _source(path, issuer, source_item, meta, url)
                         # Preserve release URL separately when an attachment has its own URL.
                         if item.get("url") and item["url"] != source.source_url:
                             source.aliases.append({"source_url": item["url"], "title": source.title,
-                                                   "publication_date": source.publication_date,
-                                                   "publication_period": source.publication_period,
-                                                   "date_basis": source.date_basis, "scope": source.scope,
+                                                   "publication_date": item.get("publication_date", meta.get("publication_date")),
+                                                   "publication_period": item.get("publication_period", meta.get("publication_period")),
+                                                   "date_basis": item.get("date_basis") or meta.get("date_basis") or source.date_basis, "scope": source.scope,
                                                    "role": "release_page"})
                         sources.append(source)
                     except (ValueError, OSError, TypeError) as exc:
