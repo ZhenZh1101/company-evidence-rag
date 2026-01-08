@@ -13,7 +13,7 @@ import numpy as np
 from rag.client import Gateway, parse_json
 from rag.config import Settings
 from rag.ingest import Segment, Source
-from rag.pipeline import RAG
+from rag.pipeline import RAG, mentioned_companies
 from rag.store import Store
 
 
@@ -38,6 +38,13 @@ class FakeGateway:
 
 
 class StoreAndRAGTests(unittest.TestCase):
+    def test_new_company_names_and_chinese_adjacent_tickers_keep_issuer_scope(self):
+        known = {'CBRS', 'NOC', 'NOK', 'AMKR', 'VST'}
+        self.assertEqual(mentioned_companies('NOK的销售额和NOC的销售额', known), ['NOC','NOK'])
+        self.assertEqual(mentioned_companies('诺基亚、Amkor和Vistra', known), ['AMKR','NOK','VST'])
+        self.assertEqual(mentioned_companies('NOKX VSTX XAMKR', known), [])
+        self.assertEqual(mentioned_companies('Nokia and VST', {'CBRS','NOC'}), [])
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

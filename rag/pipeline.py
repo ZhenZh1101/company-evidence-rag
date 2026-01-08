@@ -19,8 +19,9 @@ def normalized(text):
 
 
 def mentioned_companies(question, known):
-    aliases = {'CBRS': ['Cerebras'], 'NOC': ['Northrop Grumman', '诺斯罗普', '诺格']}
-    return [c for c in sorted(known) if re.search(r'(?<!\w)' + re.escape(c) + r'(?!\w)', question, re.I)
+    aliases = {'CBRS': ['Cerebras'], 'NOC': ['Northrop Grumman', '诺斯罗普', '诺格'],
+               'NOK': ['Nokia', '诺基亚'], 'AMKR': ['Amkor', '艾马克'], 'VST': ['Vistra']}
+    return [c for c in sorted(known) if re.search(r'(?<![A-Za-z0-9_])' + re.escape(c) + r'(?![A-Za-z0-9_])', question, re.I)
             or any(a.casefold() in question.casefold() for a in aliases.get(c, []))]
 
 
