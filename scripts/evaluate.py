@@ -44,7 +44,7 @@ def main():
         if args.generation:
             questions = json.loads(args.generation_golden.read_text(encoding='utf-8'))
             for case in questions:
-                response = rag.ask(case['question'], companies=case['companies'])
+                response = rag.ask(case['question'], companies=case['companies'], language=case.get('language', 'zh-CN'))
                 generations.append(dict(id=case['id'],question=case['question'],**response))
                 print('generation',case['id'],'insufficient=',response['insufficient_evidence'],flush=True)
         summary = {}

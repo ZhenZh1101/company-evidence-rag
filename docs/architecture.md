@@ -25,7 +25,7 @@ CBRS 根索引包含 429 条发布记录；NOC 包含 1,560 条。只按最终 `
 
 跨公司比较的实测暴露了精确总量被取整摘要挤出的问题，因此这类问答额外从最多 48 个完整候选片段中，使用同一 Chat 模型选择证据，再生成答案。单公司问答保持较短流程。选择器只能返回已提供的来源编号，不能新增证据；生成仍需逐字引用校验。表格单位必须跟随分块，不能凭模型记忆补全。
 
-模型只使用用户提供的两个本地 HTTP 接口。认证从环境或本机 OpenClaw 配置读取，密钥不进入 Git。SQLite 与 NumPy 避免另部署数据库；向量扫描适合当前本地规模，数据扩大后可依据实际延迟迁移 ANN。
+模型默认使用本地 OpenClaw 的 Chat 和 embedding HTTP 接口；embedding 的请求体模型为 `openclaw/llm-gpt55`，通过 `x-openclaw-model: openai/text-embedding-3-large` 指定实际模型。也支持两者都使用 OpenAI，以及 OpenAI embedding 搭配 Z.AI Chat。通过独立 Chat 地址、模型、密钥和请求参数切换在线 LLM；仅切换 Chat 不改变索引身份，切换 embedding 地址、请求体模型或实际路由模型需重建向量，禁止复用旧向量。认证从环境或本机 OpenClaw 配置读取，本地网关凭据不会自动转发给远程接口或独立 Chat 地址，密钥不进入 Git。SQLite 与 NumPy 避免另部署数据库；向量扫描适合当前本地规模，数据扩大后可依据实际延迟迁移 ANN。
 
 ## 质量边界
 

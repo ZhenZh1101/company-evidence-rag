@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>公司文档 RAG · 研究工作台</title>
+  <title data-i18n="pageTitle">Company RAG · Research workspace</title>
   <style>
     :root{color-scheme:light;--ink:#182936;--muted:#677783;--line:#dce4e8;--accent:#176b65;--pale:#edf6f2;--paper:#fff;--bg:#f5f7f8}
     *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer}a{color:var(--accent)}button:disabled{cursor:wait;opacity:.55}[hidden]{display:none!important}
@@ -11,8 +11,9 @@
     .layout{max-width:1440px;margin:auto;display:grid;grid-template-columns:276px minmax(0,1fr);min-height:calc(100vh - 87px)}aside{padding:32px 25px;border-right:1px solid var(--line)}main{min-width:0;padding:36px 44px 64px}.eyebrow{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--accent);font-weight:700}h1{font-size:30px;line-height:1.4;letter-spacing:-.5px;margin:8px 0}h2{font-size:17px;margin:0}h3{font-size:14px;margin:0 0 12px}.lede{margin:10px 0 26px;color:var(--muted);font-size:14px}.subtle{color:var(--muted);font-size:12px}.scope-section{margin-top:27px}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:17px 0 25px}.metric{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px}.metric strong{display:block;font-size:24px;line-height:1.25;font-weight:650}.metric span{font-size:12px;color:var(--muted)}.company-list{display:grid;gap:8px;max-height:260px;overflow:auto}.company-option{display:flex;align-items:center;gap:9px;padding:9px 10px;background:var(--paper);border:1px solid var(--line);border-radius:8px}.company-option span{flex:1;overflow-wrap:anywhere}.company-option small{color:var(--muted)}input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;margin:0}.date-field{display:grid;gap:5px;margin-top:11px;font-size:12px;color:var(--muted)}input[type=date]{width:100%;min-width:0;padding:8px;color:var(--ink);background:white;border:1px solid var(--line);border-radius:7px}.quiet-button{border:0;background:transparent;color:var(--accent);font-size:12px;padding:0;margin-top:9px;text-decoration:underline;text-underline-offset:3px}.scope-note{border-top:1px solid var(--line);padding-top:20px;margin-top:26px;font-size:12px;color:var(--muted)}
     .question-box{background:var(--paper);border:1px solid #c9d8dc;border-radius:14px;box-shadow:0 4px 14px #16323b06;overflow:hidden}.question-label{display:block;padding:17px 20px 0;font-size:13px;font-weight:650}textarea{display:block;width:100%;resize:vertical;min-height:120px;max-height:400px;border:0;padding:12px 20px 18px;background:transparent;line-height:1.75;color:var(--ink)}textarea:focus{outline:none}textarea:focus-visible{box-shadow:inset 0 0 0 2px #76bbae}textarea::placeholder{color:#87949e}.question-footer{padding:12px 16px;background:#fafcfc;border-top:1px solid #e9eef0;display:flex;align-items:center;justify-content:space-between;gap:12px}.question-footer span{font-size:12px;color:var(--muted)}.primary{border:0;border-radius:8px;background:var(--accent);color:white;padding:10px 21px;font-weight:650;white-space:nowrap}.primary:hover{background:#115650}.options{display:flex;flex-wrap:wrap;align-items:center;gap:18px;margin:13px 1px 0;color:var(--muted);font-size:12px}.options label{display:flex;align-items:center;gap:7px}.options select{border:1px solid var(--line);border-radius:6px;padding:4px 8px;background:white;font-size:12px;color:var(--ink)}.examples{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 0}.example{background:transparent;border:1px solid var(--line);border-radius:7px;color:#576974;padding:6px 10px;font-size:12px;text-align:left}.example:hover{background:white;border-color:#a8c6bf}.empty{margin-top:46px;padding:28px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.empty b{font-size:13px;font-weight:650;display:block;margin-bottom:5px}.empty p{font-size:12px;color:var(--muted);margin:0}.step{color:var(--accent);font:11px ui-monospace,SFMono-Regular,monospace;display:block;margin-bottom:10px}.message{padding:13px 16px;border-radius:9px;font-size:13px;margin-top:24px;overflow-wrap:anywhere}.error{background:#fff0ed;color:#983d2b;border:1px solid #f2cbbf}.notice{background:#fff7e7;color:#856319;border:1px solid #ebdab5}.loading{display:flex;gap:10px;align-items:center;background:var(--pale);color:var(--accent)}.spinner{width:15px;height:15px;border:2px solid #b9d9cf;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;flex:none}@keyframes spin{to{transform:rotate(360deg)}}
     .result{margin-top:32px}.result-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.result-meta{font-size:12px;color:var(--muted)}.answer-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:24px}.answer{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.9}.answer-note{margin:18px 0 0;border-top:1px solid #edf1f2;padding-top:12px;font-size:12px;color:var(--muted)}.evidence-heading{display:flex;align-items:center;gap:9px;margin:28px 0 12px}.count{font-size:11px;padding:1px 7px;border-radius:5px;background:#e2ece9;color:var(--accent)}.evidence{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.source-card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:17px;min-width:0}.source-top{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-bottom:8px;flex-wrap:wrap}.source-label{color:var(--accent);font-weight:700}.source-company{font-weight:600;color:var(--ink)}.source-title{font-size:13px;font-weight:650;overflow-wrap:anywhere;line-height:1.6;margin:0 0 8px}.source-location{font-size:11px;color:var(--muted);overflow-wrap:anywhere}.source-quote{margin:13px 0;padding-left:11px;border-left:2px solid #9fc6ba;color:#3e5961;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}.source-card details{font-size:12px;margin-top:12px}.source-card summary{cursor:pointer;color:var(--accent)}.source-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:330px;overflow:auto;background:#f7f9f9;border-radius:6px;padding:12px;line-height:1.8}.source-path{font-size:10px;font-family:ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere;color:var(--muted);margin-top:9px}.query-details{font-size:12px;color:var(--muted);margin-top:18px}.query-details summary{cursor:pointer}.query-details ul{padding-left:20px}.footer-note{font-size:11px;color:#88969e;margin-top:38px}
+    .header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:14px}.language-control{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}.language-control select{max-width:120px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink)}
     @media(max-width:950px){main{padding:30px 26px}.layout{grid-template-columns:230px minmax(0,1fr)}aside{padding:28px 19px}.evidence{grid-template-columns:1fr}h1{font-size:26px}.empty{gap:16px}}
-    @media(max-width:680px){header{padding:17px 20px;align-items:flex-start}.brand strong{font-size:16px}.brand small{font-size:11px}.status{font-size:11px;max-width:120px;padding-top:4px}.layout{display:block}aside{border-right:0;border-bottom:1px solid var(--line);padding:20px}.metrics{margin:12px 0;max-width:280px}.scope-section{margin-top:17px}.company-list{display:flex;flex-wrap:wrap;max-height:150px}.company-option{padding:7px 10px}.date-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.scope-note{margin-top:16px;padding-top:12px}.scope-section h3{margin-bottom:7px}main{padding:26px 20px 40px}h1{font-size:25px}.lede{font-size:13px}.empty{margin-top:30px;grid-template-columns:1fr;gap:18px}.step{display:none}.question-footer{align-items:flex-end}.question-footer span{max-width:140px;font-size:11px}.primary{padding:10px 17px}.answer-card{padding:18px}.options{gap:11px}.result-heading{align-items:flex-start}.result-meta{text-align:right}}
+    @media(max-width:680px){header{padding:17px 20px;align-items:flex-start;flex-wrap:wrap}.header-actions{width:100%;justify-content:space-between}.header-actions .status{max-width:none}.brand strong{font-size:16px}.brand small{font-size:11px}.status{font-size:11px;max-width:120px;padding-top:4px}.layout{display:block}aside{border-right:0;border-bottom:1px solid var(--line);padding:20px}.metrics{margin:12px 0;max-width:280px}.scope-section{margin-top:17px}.company-list{display:flex;flex-wrap:wrap;max-height:150px}.company-option{padding:7px 10px}.date-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.scope-note{margin-top:16px;padding-top:12px}.scope-section h3{margin-bottom:7px}main{padding:26px 20px 40px}h1{font-size:25px}.lede{font-size:13px}.empty{margin-top:30px;grid-template-columns:1fr;gap:18px}.step{display:none}.question-footer{align-items:flex-end}.question-footer span{max-width:140px;font-size:11px}.primary{padding:10px 17px}.answer-card{padding:18px}.options{gap:11px}.result-heading{align-items:flex-start}.result-meta{text-align:right}}
     @media(prefers-reduced-motion:reduce){.spinner{animation:none}}
     .answer{white-space:normal}.answer.plain-text{white-space:pre-wrap}
     .answer>:first-child{margin-top:0}.answer>:last-child{margin-bottom:0}
@@ -29,100 +30,306 @@
 </head>
 <body>
   <header>
-    <div class="brand"><div class="brand-mark" aria-hidden="true">R</div><div><strong>公司文档 RAG</strong><small>研究工作台 · 本地文档与可追溯问答</small></div></div>
-    <div class="status" role="status"><span id="status-dot" class="dot"></span><span id="index-status">正在读取索引…</span></div>
+    <div class="brand"><div class="brand-mark" aria-hidden="true">R</div><div><strong data-i18n="brand">Company RAG</strong><small data-i18n="brandSubtitle">Research workspace · Local documents, traceable answers</small></div></div>
+    <div class="header-actions"><div class="status" role="status"><span id="status-dot" class="dot"></span><span id="index-status" data-i18n="indexLoading">Reading index…</span></div><label class="language-control" for="language"><span data-i18n="language">Language</span><select id="language"><option value="en" lang="en" selected>English</option><option value="zh-CN" lang="zh-CN">中文</option></select></label></div>
   </header>
   <div class="layout">
-    <aside aria-label="检索范围">
-      <div class="eyebrow">DOCUMENT LIBRARY</div>
-      <div class="metrics"><div class="metric"><strong id="doc-count">—</strong><span>已加载文档</span></div><div class="metric"><strong id="chunk-count">—</strong><span>原文片段</span></div></div>
-      <div class="scope-section"><h3>公司范围</h3><div id="companies" class="company-list"><span class="subtle">正在读取…</span></div><button type="button" id="clear-companies" class="quiet-button">重置为自动识别</button><div class="subtle" style="margin-top:8px">未勾选时按问题自动识别公司；跨公司比较请勾选全部目标公司。</div></div>
-      <div class="scope-section"><h3>披露 / 事件日期</h3><div class="date-row"><label class="date-field">开始日期<input id="date-from" type="date"></label><label class="date-field">结束日期<input id="date-to" type="date"></label></div></div>
-      <div class="scope-note">采用归档标注的披露、活动或生效日期，具体依据见原文证据；不等同于财报期间或已核实的首次公开日。未知日期材料会被日期筛选排除。</div>
+    <aside data-i18n-aria-label="scopeLabel" aria-label="Search scope">
+      <div class="eyebrow" data-i18n="library">DOCUMENT LIBRARY</div>
+      <div class="metrics"><div class="metric"><strong id="doc-count">—</strong><span data-i18n="documents">Documents loaded</span></div><div class="metric"><strong id="chunk-count">—</strong><span data-i18n="chunks">Source passages</span></div></div>
+      <div class="scope-section"><h3 data-i18n="companies">Companies</h3><div id="companies" class="company-list"><span class="subtle" data-i18n="loading">Loading…</span></div><button type="button" id="clear-companies" class="quiet-button" data-i18n="resetCompanies">Reset to automatic detection</button><div class="subtle" style="margin-top:8px" data-i18n="companyHint">Leave unchecked to detect companies from your question. For comparisons, select every company you want to include.</div></div>
+      <div class="scope-section"><h3 data-i18n="dateHeading">Disclosure / event date</h3><div class="date-row"><label class="date-field"><span data-i18n="dateFrom">Start date</span><input id="date-from" type="date"></label><label class="date-field"><span data-i18n="dateTo">End date</span><input id="date-to" type="date"></label></div></div>
+      <div class="scope-note" data-i18n="dateNote">Uses the disclosure, event or effective date recorded in the archive; see each source for its date basis. This is not the financial reporting period or a verified first-publication date. Date filters exclude undated documents.</div>
     </aside>
     <main>
-      <div class="eyebrow">EVIDENCE-BASED RESEARCH</div>
-      <h1>向公司材料提问，回到原文查证。</h1>
-      <p class="lede">检索公告、财报和演示材料，将回答与原文出处放在一起。</p>
+      <div class="eyebrow" data-i18n="research">EVIDENCE-BASED RESEARCH</div>
+      <h1 data-i18n="heading">Ask company documents. Verify the sources.</h1>
+      <p class="lede" data-i18n="lede">Search announcements, financial reports and presentations, with answers and original evidence side by side.</p>
       <form id="ask-form">
-        <div class="question-box"><label for="question" class="question-label">你想了解什么？</label><textarea id="question" required maxlength="4000" placeholder="例如：所选公司最新年报中提到的主要业务风险有哪些？请引用原文，并注明报告期间。"></textarea><div class="question-footer"><span>明确公司、期间和指标，有助于定位证据。</span><button class="primary" id="submit" type="submit">检索并回答 <span aria-hidden="true" style="color:inherit">↗</span></button></div></div>
-        <div class="options"><label><input id="rewrite" type="checkbox" checked>跨语言查询改写</label><label for="mode">检索方式<select id="mode"><option value="hybrid">混合检索</option><option value="lexical">关键词检索</option><option value="dense">向量检索</option></select></label><label for="top-k">证据数<select id="top-k"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select></label></div>
+        <div class="question-box"><label for="question" class="question-label" data-i18n="questionLabel">What would you like to know?</label><textarea id="question" required maxlength="4000" data-i18n-placeholder="questionPlaceholder" placeholder="For example: What are the main business risks in the selected companies’ latest annual reports? Cite the sources and state the reporting periods."></textarea><div class="question-footer"><span data-i18n="questionHint">Specify the company, period and metric to help locate evidence.</span><button class="primary" id="submit" type="submit" data-i18n="submit">Search and answer ↗</button></div></div>
+        <div class="options"><label><input id="rewrite" type="checkbox" checked><span data-i18n="rewrite">Cross-language query rewriting</span></label><label for="mode"><span data-i18n="mode">Search method</span><select id="mode"><option value="hybrid" data-i18n="hybrid">Hybrid</option><option value="lexical" data-i18n="lexical">Keyword</option><option value="dense" data-i18n="dense">Vector</option></select></label><label for="top-k"><span data-i18n="evidenceCount">Sources</span><select id="top-k"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select></label></div>
       </form>
-      <div class="examples" aria-label="示例问题"><button class="example" type="button">概括所选公司最新年报中的主要风险因素，并引用原文。</button><button class="example" type="button">所选公司披露了哪些业务进展？请按日期梳理。</button></div>
+      <div class="examples" data-i18n-aria-label="examples" aria-label="Example questions"><button class="example" type="button" data-i18n="exampleRisks">Summarize the main risk factors in the selected companies’ latest annual reports, with source quotes.</button><button class="example" type="button" data-i18n="exampleDevelopments">What business developments have the selected companies disclosed? Organize them by date.</button></div>
       <div id="error" class="message error" role="alert" hidden></div>
-      <div id="loading" class="message loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>正在检索材料并生成有出处的回答…</span></div>
-      <div id="empty" class="empty"><div><span class="step">01 / SCOPE</span><b>限定研究范围</b><p>按公司和发布日期缩小范围，也可以同时检索多家公司的材料。</p></div><div><span class="step">02 / RETRIEVE</span><b>结合关键词与语义</b><p>混合检索同时寻找准确术语与语义相关的原文片段。</p></div><div><span class="step">03 / VERIFY</span><b>核对证据出处</b><p>通过引用编号、原文片段和源链接，检查回答是否有材料支持。</p></div></div>
-      <section id="result" class="result" aria-label="问答结果" hidden tabindex="-1">
-        <div class="result-heading"><h2>回答</h2><span id="result-meta" class="result-meta"></span></div>
+      <div id="loading" class="message loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><span data-i18n="answerLoading">Searching documents and generating an answer with sources…</span></div>
+      <div id="empty" class="empty"><div><span class="step" data-i18n="stepScope">01 / SCOPE</span><b data-i18n="scopeTitle">Set your research scope</b><p data-i18n="scopeDescription">Narrow the search by company and publication date, or search several companies together.</p></div><div><span class="step" data-i18n="stepRetrieve">02 / RETRIEVE</span><b data-i18n="retrieveTitle">Combine keywords and meaning</b><p data-i18n="retrieveDescription">Hybrid search finds both exact terms and semantically related passages.</p></div><div><span class="step" data-i18n="stepVerify">03 / VERIFY</span><b data-i18n="verifyTitle">Check the original evidence</b><p data-i18n="verifyDescription">Use citation labels, source passages and original links to check what supports each answer.</p></div></div>
+      <section id="result" class="result" data-i18n-aria-label="resultLabel" aria-label="Question and answer results" hidden tabindex="-1">
+        <div class="result-heading"><h2 data-i18n="answer">Answer</h2><span id="result-meta" class="result-meta"></span></div>
         <div id="warning" class="message notice" role="status" hidden></div>
-        <div class="answer-card"><div id="answer" class="answer"></div><p class="answer-note">回答基于本次检索到的材料。涉及数值、时间范围和跨公司比较时，请结合下方原文核对。</p></div>
-        <div class="evidence-heading"><h2>原文证据</h2><span id="source-count" class="count"></span></div>
+        <div class="answer-card"><div id="answer" class="answer"></div><p class="answer-note" data-i18n="answerNote">Answers use the documents retrieved for this question. Check the sources below for figures, time periods and company comparisons.</p></div>
+        <div class="evidence-heading"><h2 data-i18n="evidence">Source evidence</h2><span id="source-count" class="count"></span></div>
         <div id="sources" class="evidence"></div>
-        <details id="query-details" class="query-details"><summary>查看实际检索查询</summary><ul id="queries"></ul></details>
+        <details id="query-details" class="query-details"><summary data-i18n="queries">View search queries</summary><ul id="queries"></ul></details>
       </section>
-      <p class="footer-note">本地研究工作台 · 文档导入与索引由命令行管理</p>
+      <p class="footer-note" data-i18n="footer">Local research workspace · Manage document imports and indexing from the command line</p>
     </main>
   </div>
   <script>
+    const messages = {
+  "en": {
+    "pageTitle": "Company RAG · Research workspace",
+    "brand": "Company RAG",
+    "brandSubtitle": "Research workspace · Local documents, traceable answers",
+    "language": "Language",
+    "indexLoading": "Reading index…",
+    "scopeLabel": "Search scope",
+    "library": "DOCUMENT LIBRARY",
+    "documents": "Documents loaded",
+    "chunks": "Source passages",
+    "companies": "Companies",
+    "loading": "Loading…",
+    "resetCompanies": "Reset to automatic detection",
+    "companyHint": "Leave unchecked to detect companies from your question. For comparisons, select every company you want to include.",
+    "dateHeading": "Disclosure / event date",
+    "dateFrom": "Start date",
+    "dateTo": "End date",
+    "dateNote": "Uses the disclosure, event or effective date recorded in the archive; see each source for its date basis. This is not the financial reporting period or a verified first-publication date. Date filters exclude undated documents.",
+    "research": "EVIDENCE-BASED RESEARCH",
+    "heading": "Ask company documents. Verify the sources.",
+    "lede": "Search announcements, financial reports and presentations, with answers and original evidence side by side.",
+    "questionLabel": "What would you like to know?",
+    "questionPlaceholder": "For example: What are the main business risks in the selected companies’ latest annual reports? Cite the sources and state the reporting periods.",
+    "questionHint": "Specify the company, period and metric to help locate evidence.",
+    "submit": "Search and answer ↗",
+    "answering": "Answering…",
+    "rewrite": "Cross-language query rewriting",
+    "mode": "Search method",
+    "hybrid": "Hybrid",
+    "lexical": "Keyword",
+    "dense": "Vector",
+    "evidenceCount": "Sources",
+    "examples": "Example questions",
+    "exampleRisks": "Summarize the main risk factors in the selected companies’ latest annual reports, with source quotes.",
+    "exampleDevelopments": "What business developments have the selected companies disclosed? Organize them by date.",
+    "answerLoading": "Searching documents and generating an answer with sources…",
+    "stepScope": "01 / SCOPE",
+    "stepRetrieve": "02 / RETRIEVE",
+    "stepVerify": "03 / VERIFY",
+    "scopeTitle": "Set your research scope",
+    "scopeDescription": "Narrow the search by company and publication date, or search several companies together.",
+    "retrieveTitle": "Combine keywords and meaning",
+    "retrieveDescription": "Hybrid search finds both exact terms and semantically related passages.",
+    "verifyTitle": "Check the original evidence",
+    "verifyDescription": "Use citation labels, source passages and original links to check what supports each answer.",
+    "resultLabel": "Question and answer results",
+    "answer": "Answer",
+    "answerNote": "Answers use the documents retrieved for this question. Check the sources below for figures, time periods and company comparisons.",
+    "evidence": "Source evidence",
+    "queries": "View search queries",
+    "footer": "Local research workspace · Manage document imports and indexing from the command line",
+    "invalidResponse": "The server returned an unreadable response. Check the local service.",
+    "requestFailed": "Request failed ({status}).",
+    "networkError": "Request failed. Check that the local service is running.",
+    "documentCount": "{count} docs",
+    "noCompanies": "No companies yet. Import documents first.",
+    "noIndex": "No document index",
+    "partialIndex": "Vector index {indexed} / {chunks}",
+    "indexReady": "Local index ready",
+    "indexUnavailable": "Index status unavailable",
+    "companiesUnavailable": "Could not load the company list.",
+    "unknownCompany": "Company not specified",
+    "unknownDate": "Publication date not specified",
+    "untitled": "Untitled document",
+    "dateBasis": "Date basis: {value}",
+    "archivePeriod": "Archive period: {value}",
+    "openSource": "Open original source ↗",
+    "expandSource": "View source passage",
+    "noSourceText": "No source text available.",
+    "sourceLoading": "Loading source text…",
+    "noAnswer": "The service returned no answer.",
+    "insufficientNotice": "The retrieved evidence is insufficient to fully answer this question. Adjust the companies, date range or question.",
+    "retrievedSource": "Retrieved source",
+    "sourceCount": "{count}",
+    "noSources": "No source evidence to display for this question.",
+    "allCompanies": "All companies",
+    "resultMeta": "{scope} · {count} sources · {elapsed} s · {language}",
+    "questionRequired": "Enter a question first.",
+    "invalidDates": "The start date must not be later than the end date.",
+    "query_rewrite_unavailable": "Query rewriting unavailable; searched the original question.",
+    "publication_date_filter": "Date filters apply to disclosure/event dates, not financial reporting periods; undated documents are excluded.",
+    "comparison_selection_unavailable": "Comparison evidence selection unavailable; used fused retrieval ranking.",
+    "answer_validation_failed": "The answer failed citation/JSON validation twice.",
+    "no_evidence": "No usable evidence was found within the current filters. Check the imported documents or adjust your filters.",
+    "insufficient_evidence": "The retrieved documents are insufficient to reliably answer this question. Add relevant documents or adjust the question, companies and disclosure date range.",
+    "validation_refusal": "The model output failed citation validation. The unverified answer has been withheld. Review the retrieved evidence below or try another question."
+  },
+  "zh-CN": {
+    "pageTitle": "公司文档 RAG · 研究工作台",
+    "brand": "公司文档 RAG",
+    "brandSubtitle": "研究工作台 · 本地文档与可追溯问答",
+    "language": "语言",
+    "indexLoading": "正在读取索引…",
+    "scopeLabel": "检索范围",
+    "library": "文档库",
+    "documents": "已加载文档",
+    "chunks": "原文片段",
+    "companies": "公司范围",
+    "loading": "正在读取…",
+    "resetCompanies": "重置为自动识别",
+    "companyHint": "未勾选时按问题自动识别公司；跨公司比较请勾选全部目标公司。",
+    "dateHeading": "披露 / 事件日期",
+    "dateFrom": "开始日期",
+    "dateTo": "结束日期",
+    "dateNote": "采用归档标注的披露、活动或生效日期，具体依据见原文证据；不等同于财报期间或已核实的首次公开日。未知日期材料会被日期筛选排除。",
+    "research": "基于证据的研究",
+    "heading": "向公司材料提问，回到原文查证。",
+    "lede": "检索公告、财报和演示材料，将回答与原文出处放在一起。",
+    "questionLabel": "你想了解什么？",
+    "questionPlaceholder": "例如：所选公司最新年报中提到的主要业务风险有哪些？请引用原文，并注明报告期间。",
+    "questionHint": "明确公司、期间和指标，有助于定位证据。",
+    "submit": "检索并回答 ↗",
+    "answering": "正在回答…",
+    "rewrite": "跨语言查询改写",
+    "mode": "检索方式",
+    "hybrid": "混合检索",
+    "lexical": "关键词检索",
+    "dense": "向量检索",
+    "evidenceCount": "证据数",
+    "examples": "示例问题",
+    "exampleRisks": "概括所选公司最新年报中的主要风险因素，并引用原文。",
+    "exampleDevelopments": "所选公司披露了哪些业务进展？请按日期梳理。",
+    "answerLoading": "正在检索材料并生成有出处的回答…",
+    "stepScope": "01 / 范围",
+    "stepRetrieve": "02 / 检索",
+    "stepVerify": "03 / 核查",
+    "scopeTitle": "限定研究范围",
+    "scopeDescription": "按公司和发布日期缩小范围，也可以同时检索多家公司的材料。",
+    "retrieveTitle": "结合关键词与语义",
+    "retrieveDescription": "混合检索同时寻找准确术语与语义相关的原文片段。",
+    "verifyTitle": "核对证据出处",
+    "verifyDescription": "通过引用编号、原文片段和源链接，检查回答是否有材料支持。",
+    "resultLabel": "问答结果",
+    "answer": "回答",
+    "answerNote": "回答基于本次检索到的材料。涉及数值、时间范围和跨公司比较时，请结合下方原文核对。",
+    "evidence": "原文证据",
+    "queries": "查看实际检索查询",
+    "footer": "本地研究工作台 · 文档导入与索引由命令行管理",
+    "invalidResponse": "服务返回了无法解析的响应，请检查本地服务。",
+    "requestFailed": "请求失败（{status}）。",
+    "networkError": "请求失败，请确认本地服务仍在运行。",
+    "documentCount": "{count} 份",
+    "noCompanies": "暂无公司，请先导入文档。",
+    "noIndex": "暂无文档索引",
+    "partialIndex": "向量索引 {indexed} / {chunks}",
+    "indexReady": "本地索引就绪",
+    "indexUnavailable": "索引状态不可用",
+    "companiesUnavailable": "无法读取公司列表。",
+    "unknownCompany": "公司未标注",
+    "unknownDate": "发布日期未标注",
+    "untitled": "未命名文档",
+    "dateBasis": "日期依据：{value}",
+    "archivePeriod": "归档期间：{value}",
+    "openSource": "打开原始来源 ↗",
+    "expandSource": "展开原文片段",
+    "noSourceText": "暂无原文内容。",
+    "sourceLoading": "正在读取原文…",
+    "noAnswer": "服务未返回回答。",
+    "insufficientNotice": "本次检索的证据不足，无法完整回答该问题。请调整公司、时间范围或问题表述。",
+    "retrievedSource": "检索材料",
+    "sourceCount": "{count} 条",
+    "noSources": "本次没有可展示的原文证据。",
+    "allCompanies": "全部公司",
+    "resultMeta": "{scope} · {count} 条材料 · {elapsed} 秒 · {language}",
+    "questionRequired": "请先输入问题。",
+    "invalidDates": "开始日期不能晚于结束日期。",
+    "query_rewrite_unavailable": "查询改写不可用，已使用原问题检索。",
+    "publication_date_filter": "日期筛选依据披露或事件日期，并非财务报告期间；未知日期材料已排除。",
+    "comparison_selection_unavailable": "跨公司证据选择不可用，已使用融合检索排序。",
+    "answer_validation_failed": "回答两次未通过引用或 JSON 格式校验。",
+    "no_evidence": "当前筛选范围内没有检索到可用证据。请检查导入状态或调整筛选条件。",
+    "insufficient_evidence": "当前检索到的材料不足以可靠回答这个问题。请补充相关文件，或调整问题、公司和披露日期范围。",
+    "validation_refusal": "模型输出未通过引用校验，已停止展示未经验证的回答。请查看下方检索证据或重新提问。"
+  }
+};
     const $ = (id) => document.getElementById(id);
-    const number = (value) => Number(value || 0).toLocaleString('zh-CN');
+    let language = 'en';
+    try { if (localStorage.getItem('rag-language') === 'zh-CN') language = 'zh-CN'; } catch {}
+    let currentStats = null, statsFailed = false, lastResult = null, currentError = null;
+    const t = (key, values = {}) => (messages[language][key] || messages.en[key] || key)
+      .replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
+    const number = (value) => Number(value || 0).toLocaleString(language);
     function element(tag, className, text) {
       const node = document.createElement(tag);
       if (className) node.className = className;
       if (text !== undefined && text !== null) node.textContent = String(text);
       return node;
     }
-    async function request(url, options) {
-      const response = await fetch(url, options);
+    function localizedError(key, values) { return Object.assign(new Error(t(key, values)), {key, values}); }
+    function setLanguage(value) {
+      language = Object.hasOwn(messages, value) ? value : 'en';
+      document.documentElement.lang = language;
+      $('language').value = language;
+      document.querySelectorAll('[data-i18n]').forEach(node => node.textContent = t(node.dataset.i18n));
+      for (const attribute of ['placeholder', 'aria-label']) {
+        document.querySelectorAll(`[data-i18n-${attribute}]`).forEach(node => node.setAttribute(attribute, t(node.getAttribute(`data-i18n-${attribute}`))));
+      }
+      renderStats();
+      if (lastResult && !$('result').hidden) showResult(lastResult.data, lastResult.elapsed, false);
+      if (currentError && !$('error').hidden) showError(currentError);
+    }
+    async function request(url, options = {}) {
+      let response;
+      try { response = await fetch(url, {...options, headers: {'Accept-Language': language, ...options.headers}}); }
+      catch { throw localizedError('networkError'); }
       let data;
-      try { data = await response.json(); } catch { throw new Error('服务返回了无法解析的响应，请检查本地服务。'); }
+      try { data = await response.json(); } catch { throw localizedError('invalidResponse'); }
       if (!response.ok) {
-        const detail = Array.isArray(data.detail) ? data.detail.map(item => item.msg).join('；') : data.detail;
-        throw new Error(typeof detail === 'string' ? detail : `请求失败（${response.status}）`);
+        const detail = Array.isArray(data.detail) ? data.detail.map(item => item.msg).join('; ') : data.detail;
+        throw typeof detail === 'string' ? Object.assign(new Error(detail), {messages: data.error_messages}) : localizedError('requestFailed', {status: response.status});
       }
       return data;
     }
-    async function loadStats() {
-      try {
-        const stats = await request('/api/stats');
-        $('doc-count').textContent = number(stats.documents);
-        $('chunk-count').textContent = number(stats.chunks);
-        const companies = stats.companies || [];
-        $('companies').replaceChildren();
-        for (const item of companies) {
-          const name = typeof item === 'string' ? item : item.company;
-          const label = element('label', 'company-option');
-          const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.value = name;
-          label.append(checkbox, element('span', '', name));
-          if (item.documents !== undefined) label.append(element('small', '', `${number(item.documents)} 份`));
-          $('companies').append(label);
-        }
-        if (!companies.length) $('companies').append(element('span', 'subtle', '暂无公司，请先导入文档。'));
-        const chunks = Number(stats.chunks || 0), indexed = Number(stats.indexed_chunks || 0);
-        $('status-dot').className = `dot ${chunks && indexed >= chunks ? 'ready' : 'warn'}`;
-        $('index-status').textContent = !chunks ? '暂无文档索引' : indexed < chunks ? `向量索引 ${number(indexed)} / ${number(chunks)}` : '本地索引就绪';
-      } catch (error) {
-        $('index-status').textContent = '索引状态不可用';
-        $('companies').replaceChildren(element('span', 'subtle', '无法读取公司列表。'));
-        showError(error.message);
+    function renderStats() {
+      if (statsFailed) {
+        $('index-status').textContent = t('indexUnavailable');
+        $('companies').replaceChildren(element('span', 'subtle', t('companiesUnavailable')));
+        return;
       }
+      if (!currentStats) return;
+      const stats = currentStats;
+      $('doc-count').textContent = number(stats.documents);
+      $('chunk-count').textContent = number(stats.chunks);
+      const selected = new Set(Array.from($('companies').querySelectorAll('input:checked'), input => input.value));
+      const companies = stats.companies || [];
+      $('companies').replaceChildren();
+      for (const item of companies) {
+        const name = typeof item === 'string' ? item : item.company;
+        const label = element('label', 'company-option');
+        const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.value = name; checkbox.checked = selected.has(name);
+        label.append(checkbox, element('span', '', name));
+        if (item.documents !== undefined) label.append(element('small', '', t('documentCount', {count: number(item.documents)})));
+        $('companies').append(label);
+      }
+      if (!companies.length) $('companies').append(element('span', 'subtle', t('noCompanies')));
+      const chunks = Number(stats.chunks || 0), indexed = Number(stats.indexed_chunks || 0);
+      $('status-dot').className = `dot ${chunks && indexed >= chunks ? 'ready' : 'warn'}`;
+      $('index-status').textContent = !chunks ? t('noIndex') : indexed < chunks ? t('partialIndex', {indexed: number(indexed), chunks: number(chunks)}) : t('indexReady');
     }
-    function showError(message) { $('error').textContent = message; $('error').hidden = false; }
+    async function loadStats() {
+      try { currentStats = await request('/api/stats'); }
+      catch (error) { statsFailed = true; showError(error); }
+      renderStats();
+    }
+    function showError(error) {
+      currentError = error;
+      $('error').textContent = error.messages?.[language] || (error.key ? t(error.key, error.values) : error.message);
+      $('error').hidden = false;
+    }
     function addSource(source, label, quote) {
       const card = element('article', 'source-card');
       const top = element('div', 'source-top');
       if (label) top.append(element('span', 'source-label', label));
-      top.append(element('span', 'source-company', source.company || '公司未标注'));
-      top.append(element('span', '', source.publication_date || '发布日期未标注'));
-      card.append(top, element('h3', 'source-title', source.title || '未命名文档'));
+      top.append(element('span', 'source-company', source.company || t('unknownCompany')));
+      top.append(element('span', '', source.publication_date || t('unknownDate')));
+      card.append(top, element('h3', 'source-title', source.title || t('untitled')));
       if (source.locator) card.append(element('div', 'source-location', source.locator));
-      if (source.date_basis) card.append(element('div', 'source-location', `日期依据：${source.date_basis}`));
-      if (source.publication_period) card.append(element('div', 'source-location', `归档期间：${source.publication_period}`));
+      if (source.date_basis) card.append(element('div', 'source-location', t('dateBasis', {value: source.date_basis})));
+      if (source.publication_period) card.append(element('div', 'source-location', t('archivePeriod', {value: source.publication_period})));
       if (source.source_url) {
         try {
           const url = new URL(source.source_url);
           if (['http:', 'https:'].includes(url.protocol)) {
-            const link = element('a', 'source-location', '打开原始来源 ↗');
+            const link = element('a', 'source-location', t('openSource'));
             link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
             card.append(link);
           }
@@ -130,28 +337,35 @@
       }
       if (quote) card.append(element('blockquote', 'source-quote', quote));
       const details = element('details');
-      details.append(element('summary', '', '展开原文片段'));
-      const text = element('div', 'source-text', source.text || '暂无原文内容。');
+      details.append(element('summary', '', t('expandSource')));
+      const text = element('div', 'source-text', source.text || t('noSourceText'));
       details.append(text);
       if (source.path) details.append(element('div', 'source-path', source.path));
       if (!source.text && source.id) {
         details.addEventListener('toggle', async () => {
           if (!details.open || details.dataset.loaded) return;
-          details.dataset.loaded = 'true'; text.textContent = '正在读取原文…';
-          try { const data = await request(`/api/source/${encodeURIComponent(source.id)}`); text.textContent = data.text || '暂无原文内容。'; }
-          catch (error) { text.textContent = error.message; delete details.dataset.loaded; }
+          details.dataset.loaded = 'true'; text.textContent = t('sourceLoading');
+          try { const data = await request(`/api/source/${encodeURIComponent(source.id)}`); source.text = data.text; text.textContent = source.text || t('noSourceText'); }
+          catch (error) { text.textContent = error.messages?.[language] || (error.key ? t(error.key, error.values) : error.message); delete details.dataset.loaded; }
         });
       }
       card.append(details); $('sources').append(card);
     }
-    function showResult(data, elapsed) {
-      const rendered = typeof data.answer_html === 'string';
+    function showResult(data, elapsed, focus = true) {
+      lastResult = {data, elapsed};
+      const answerKey = data.answer_code === 'answer_validation_failed' ? 'validation_refusal' : data.answer_code;
+      const localAnswer = answerKey && Object.hasOwn(messages.en, answerKey);
+      const rendered = !localAnswer && typeof data.answer_html === 'string';
       $('answer').classList.toggle('plain-text', !rendered);
+      $('answer').lang = localAnswer ? language : (data.language || 'en');
       // Only insert HTML produced by the server's HTML-disabled Markdown renderer.
       if (rendered) $('answer').innerHTML = data.answer_html;
-      else $('answer').textContent = data.answer || '服务未返回回答。';
-      const warnings = (data.warnings || []).map(String);
-      if (data.insufficient_evidence) warnings.unshift('本次检索的证据不足，无法完整回答该问题。请调整公司、时间范围或问题表述。');
+      else $('answer').textContent = localAnswer ? t(answerKey) : data.answer || t('noAnswer');
+      const warnings = (data.warnings || []).map((warning, index) => {
+        const key = data.warning_codes?.[index];
+        return key && Object.hasOwn(messages.en, key) ? t(key) : String(warning);
+      });
+      if (data.insufficient_evidence) warnings.unshift(t('insufficientNotice'));
       $('warning').textContent = warnings.join(' '); $('warning').hidden = !warnings.length;
       $('sources').replaceChildren();
       const seen = new Set();
@@ -163,36 +377,42 @@
       }
       for (const source of data.sources || []) {
         if (seen.has(String(source.id))) continue;
-        addSource(source, source.label || '检索材料', ''); seen.add(String(source.id));
+        addSource(source, source.label || t('retrievedSource'), ''); seen.add(String(source.id));
       }
       const count = $('sources').children.length;
-      $('source-count').textContent = `${count} 条`;
-      if (!count) $('sources').append(element('p', 'subtle', '本次没有可展示的原文证据。'));
+      $('source-count').textContent = t('sourceCount', {count: number(count)});
+      if (!count) $('sources').append(element('p', 'subtle', t('noSources')));
       $('queries').replaceChildren(...(data.queries || []).map(query => element('li', '', query)));
       $('query-details').hidden = !(data.queries || []).length;
-      const scope = data.filters?.companies?.join(' / ') || '全部公司';
-      $('result-meta').textContent = `${scope} · ${count} 条材料 · ${elapsed.toFixed(1)} 秒`;
-      $('result').hidden = false; $('result').focus({preventScroll: true});
+      const scope = data.filters?.companies?.join(' / ') || t('allCompanies');
+      $('result-meta').textContent = t('resultMeta', {scope, count: number(count), elapsed: elapsed.toLocaleString(language, {minimumFractionDigits: 1, maximumFractionDigits: 1}), language: $('answer').lang === 'zh-CN' ? '中文' : 'English'});
+      $('result').hidden = false;
+      if (focus) $('result').focus({preventScroll: true});
     }
     $('ask-form').addEventListener('submit', async (event) => {
       event.preventDefault(); if ($('submit').disabled) return;
       const question = $('question').value.trim();
-      if (!question) { showError('请先输入问题。'); $('question').focus(); return; }
+      if (!question) { showError(localizedError('questionRequired')); $('question').focus(); return; }
       const dateFrom = $('date-from').value, dateTo = $('date-to').value;
-      if (dateFrom && dateTo && dateFrom > dateTo) { showError('开始日期不能晚于结束日期。'); return; }
+      if (dateFrom && dateTo && dateFrom > dateTo) { showError(localizedError('invalidDates')); return; }
       const companies = Array.from($('companies').querySelectorAll('input:checked'), input => input.value);
-      const payload = {question, companies: companies.length ? companies : null, date_from: dateFrom || null, date_to: dateTo || null, rewrite: $('rewrite').checked, mode: $('mode').value, top_k: Number($('top-k').value)};
+      const payload = {question, language, companies: companies.length ? companies : null, date_from: dateFrom || null, date_to: dateTo || null, rewrite: $('rewrite').checked, mode: $('mode').value, top_k: Number($('top-k').value)};
       const controls = Array.from(document.querySelectorAll('input,textarea,select,button')).filter(control => !control.disabled);
       controls.forEach(control => control.disabled = true);
       $('error').hidden = true; $('loading').hidden = false; $('empty').hidden = true; $('result').hidden = true;
-      $('submit').disabled = true; $('submit').textContent = '正在回答…'; $('ask-form').setAttribute('aria-busy', 'true');
+      $('submit').textContent = t('answering'); $('ask-form').setAttribute('aria-busy', 'true');
       const start = performance.now();
       try { const data = await request('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); showResult(data, (performance.now() - start) / 1000); }
-      catch (error) { showError(error.message || '请求失败，请确认本地服务仍在运行。'); }
-      finally { controls.forEach(control => control.disabled = false); $('loading').hidden = true; $('submit').textContent = '检索并回答 ↗'; $('ask-form').removeAttribute('aria-busy'); }
+      catch (error) { showError(error); }
+      finally { controls.forEach(control => control.disabled = false); $('loading').hidden = true; $('submit').textContent = t('submit'); $('ask-form').removeAttribute('aria-busy'); }
+    });
+    $('language').addEventListener('change', () => {
+      setLanguage($('language').value);
+      try { localStorage.setItem('rag-language', language); } catch {}
     });
     $('clear-companies').addEventListener('click', () => $('companies').querySelectorAll('input').forEach(input => input.checked = false));
     document.querySelectorAll('.example').forEach(button => button.addEventListener('click', () => { $('question').value = button.textContent; $('question').focus(); }));
+    setLanguage(language);
     loadStats();
   </script>
 </body>

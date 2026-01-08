@@ -12,7 +12,17 @@ class Gateway:
         self.settings = settings
 
     def _post(self, route, payload):
-        if not self.settings.api_key:
+        base_url, api_key = self.settings.base_url.rstrip('/'), self.settings.api_key
+        if route == 'chat/completions':
+            base_url = (self.settings.chat_base_url or base_url).rstrip('/')
+            api_key = self.settings.chat_api_key
+            # Only the same endpoint may inherit the shared gateway credential.
+            if api_key is None and base_url == self.settings.base_url.rstrip('/'):
+                api_key = self.settings.api_key
+            if not api_key:
+                raise RuntimeError('Set RAG_CHAT_API_KEY; a separate chat endpoint requires its own key. '
+                                   'For the shared gateway, set RAG_API_KEY or configure gateway.auth.token.')
+        elif not api_key:
             raise RuntimeError('Set RAG_API_KEY or configure gateway.auth.token in ~/.openclaw/openclaw.json.')
         encoded = json.dumps(payload, ensure_ascii=False).encode()
         # Prevent HTTP redirects from forwarding Authorization to another destination.
@@ -21,9 +31,11 @@ class Gateway:
                 return None
         opener = request.build_opener(NoRedirect)
         for attempt in range(5):
-            req = request.Request(self.settings.base_url + '/' + route, encoded,
-                                  {'Authorization': 'Bearer ' + self.settings.api_key,
+            req = request.Request(base_url + '/' + route, encoded,
+                                  {'Authorization': 'Bearer ' + api_key,
                                    'Content-Type': 'application/json'})
+            if route == 'embeddings' and self.settings.openclaw_embedding_model:
+                req.add_header('x-openclaw-model', self.settings.openclaw_embedding_model)
             try:
                 with opener.open(req, timeout=self.settings.timeout) as response:
                     return json.load(response)
@@ -76,8 +88,15 @@ class Gateway:
             raise RuntimeError('Gateway embeddings must be finite, nonzero, consistent vectors with valid indexes.') from None
 
     def chat(self, messages, max_tokens=2400):
-        data = self._post('chat/completions', {'model': self.settings.chat_model,
-                         'messages': messages, 'temperature': 0, 'max_tokens': max_tokens})
+        payload = {'model': self.settings.chat_model, 'messages': messages,
+                   self.settings.chat_token_limit_field: max_tokens}
+        if self.settings.chat_temperature is not None:
+            payload['temperature'] = self.settings.chat_temperature
+        if self.settings.chat_thinking is not None:
+            payload['thinking'] = {'type': self.settings.chat_thinking}
+        if self.settings.chat_reasoning_effort is not None:
+            payload['reasoning_effort'] = self.settings.chat_reasoning_effort
+        data = self._post('chat/completions', payload)
         try:
             choice = data['choices'][0]
             content = choice['message']['content']

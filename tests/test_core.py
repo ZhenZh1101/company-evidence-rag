@@ -322,6 +322,69 @@ class StoreAndRAGTests(unittest.TestCase):
         self.assertEqual(source["locator"], "paragraph 1")
         self.assertEqual(source["path"], str(self.root / "report.txt"))
 
+    def test_answer_language_is_explicit_and_quotes_keep_the_source_language(self):
+        quote = 'Revenue was 100 million in fiscal 2026.'
+        self.add('report', quote)
+        for options, language, expected_language in (({}, 'en', 'English (en)'),
+                ({'language': 'zh-CN'}, 'zh-CN', 'Simplified Chinese (zh-CN)')):
+            with self.subTest(language=language):
+                reply = json.dumps({'answer': 'Revenue 100 million. [S1]', 'insufficient_evidence': False,
+                                    'citations': [{'label': 'S1', 'quote': quote}]})
+                gateway = FakeGateway(replies=[reply])
+                result = RAG(self.store, gateway).ask('Revenue 是多少？', mode='lexical', rewrite=False, **options)
+                self.assertEqual(result['language'], language)
+                self.assertIn('Write the answer in ' + expected_language, gateway.messages[0][0]['content'])
+                self.assertIn('Keep citation quotes verbatim in their original language.', gateway.messages[0][0]['content'])
+                self.assertEqual(result['citations'][0]['quote'], quote)
+                self.assertEqual(result['sources'][0]['text'], quote)
+                self.assertNotIn('answer_code', result)
+
+    def test_builtin_refusals_and_warning_codes_follow_selected_language(self):
+        self.add('report', 'Revenue was 100 million in fiscal 2026.')
+        for language in ('en', 'zh-CN'):
+            with self.subTest(language=language):
+                result = RAG(self.store, FakeGateway()).ask('Revenue', date_from='2030-01-01',
+                    mode='lexical', rewrite=False, language=language)
+                self.assertEqual(result['answer_code'], 'no_evidence')
+                self.assertTrue(result['answer'].startswith('No usable evidence' if language == 'en' else '当前筛选范围'))
+                self.assertEqual(result['warning_codes'], ['publication_date_filter'])
+                self.assertTrue(result['warnings'][0].startswith('Date filters' if language == 'en' else '日期筛选'))
+                insufficient = json.dumps({'answer': 'Unsupported model wording', 'insufficient_evidence': True, 'citations': []})
+                for replies, expected_code in (([insufficient], 'insufficient_evidence'), (['bad JSON'] * 2, 'answer_validation_failed')):
+                    result = RAG(self.store, FakeGateway(replies=replies)).ask('Revenue', mode='lexical', rewrite=False, language=language)
+                    self.assertEqual(result['answer_code'], expected_code)
+                    self.assertNotIn('Unsupported model wording', result['answer'])
+                    self.assertEqual(result['answer'].isascii(), language == 'en')
+                self.assertEqual(result['warning_codes'], ['answer_validation_failed'])
+                self.assertEqual(result['warnings'][0].isascii(), language == 'en')
+                result = RAG(self.store, FakeGateway(replies=['bad JSON'])).search('Revenue', mode='lexical', language=language)
+                self.assertEqual(result['warning_codes'], ['query_rewrite_unavailable'])
+                self.assertEqual(result['warnings'][0].isascii(), language == 'en')
+
+    def test_invalid_language_rejected_before_gateway_calls(self):
+        gateway = FakeGateway()
+        rag = RAG(self.store, gateway)
+        for method in (rag.ask, rag.search):
+            for language in ('fr', '', None, ['en']):
+                with self.subTest(method=method.__name__, language=language), self.assertRaisesRegex(ValueError, 'Language'):
+                    method('Revenue', language=language)
+        self.assertEqual(gateway.messages, [])
+        self.assertEqual(gateway.embedded, [])
+
+    def test_cli_language_defaults_selection_and_validation(self):
+        from rag.cli import main
+        for command in ('ask', 'search'):
+            for flags, expected in (([], 'en'), (['--language', 'zh-CN'], 'zh-CN')):
+                with self.subTest(command=command, language=expected):
+                    stdout = io.StringIO()
+                    args = ['company-rag', command, 'Revenue', '--mode', 'lexical', '--no-rewrite', *flags]
+                    with patch('sys.argv', args), patch('rag.cli.Settings.from_env', return_value=Settings(db_path=self.root / 'test.sqlite3')), redirect_stdout(stdout):
+                        main()
+                    self.assertEqual(json.loads(stdout.getvalue())['language'], expected)
+        with patch('sys.argv', ['company-rag', 'ask', 'Revenue', '--language', 'fr']), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            main()
+        self.assertEqual(error.exception.code, 2)
+
     def test_invalid_question_dates_and_top_k_rejected(self):
         rag = RAG(self.store, FakeGateway())
         for options in ({"question": ""}, {"question": "x", "date_from": "2026-02-30"},

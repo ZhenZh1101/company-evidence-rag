@@ -1,0 +1,44 @@
+[
+  {
+    "id": "nok_q2_h1_2026_reported_net_sales",
+    "company": "NOK",
+    "question": "NOK Nokia Q2 and Half Year 2026 reported net sales EUR million three and six months",
+    "chinese_question": "NOK 诺基亚 2026 年第二季度和上半年的 reported net sales 分别是多少？请用百万欧元，明确季度与累计期间，并区分 reported 与 comparable 口径，不要用 comparable 数字替换 reported 数字。",
+    "values": ["4815", "9248"],
+    "units": "EUR million",
+    "date_from": "2026-07-23",
+    "date_to": "2026-07-23",
+    "source_path": "/Users/zhenzhang/bigplan/IR_retrieval/NOK_2024-10-07_2026-10-07/releases/financial_results/2026-07-23_Nokia Corporation Report for Q2 and Half Year 2026_00be1c0e33/nokia_results_2026_q2.pdf",
+    "locator": "page 1",
+    "source_url": "https://www.nokia.com/system/files/2026-07/nokia_results_2026_q2.pdf",
+    "note": "Reported Q2 net sales 4,815; reported Q1-Q2 net sales 9,248. Comparable Q1-Q2 net sales are 9,251 and must not replace reported sales."
+  },
+  {
+    "id": "amkr_q2_h1_2026_net_sales",
+    "company": "AMKR",
+    "question": "AMKR Amkor 2026 consolidated net sales three months six months ended June 30 thousands",
+    "chinese_question": "AMKR 安靠 2026 年第二季度和上半年累计的公司合并净销售额分别是多少？请按原表精度用千美元，明确三个月与六个月期间，不要把上半年累计当作第二季度。",
+    "values": ["1897965", "3582666"],
+    "units": "USD thousand",
+    "date_from": "2026-07-27",
+    "date_to": "2026-07-27",
+    "source_path": "/Users/zhenzhang/bigplan/IR_retrieval/AMKR_Amkor_Technology/IR_press_releases/2026-07-27_Amkor Technology Reports Financial Results for the Second Quarter 2026_b4f94e55/page.html",
+    "locator": "table 5",
+    "source_url": "https://ir.amkor.com/news-releases/news-release-details/amkor-technology-reports-financial-results-second-quarter-2026",
+    "note": "Consolidated net sales for three months ended June 30, 2026: 1,897,965; six months: 3,582,666, both USD thousands."
+  },
+  {
+    "id": "vst_q2_2026_net_income_adjusted_ebitda",
+    "company": "VST",
+    "question": "VST Vistra second quarter 2026 GAAP net income ongoing operations adjusted EBITDA millions",
+    "chinese_question": "VST Vistra 2026 年第二季度 GAAP 净利润和 Ongoing Operations Adjusted EBITDA 分别是多少？请用百万美元，明确季度期间以及 GAAP 与非 GAAP 口径。",
+    "values": ["305", "1767"],
+    "units": "USD million",
+    "date_from": "2026-08-07",
+    "date_to": "2026-08-07",
+    "source_path": "/Users/zhenzhang/bigplan/IR_retrieval/VST_2024-10-07_2026-10-07/releases/news/2026-08-07_Vistra Reports Second Quarter 2026 Results_5579e2ab/article.html",
+    "locator": "table 1",
+    "source_url": "https://investor.vistracorp.com/2026-08-07-Vistra-Reports-Second-Quarter-2026-Results",
+    "note": "Three months ended June 30, 2026: GAAP net income 305; ongoing operations adjusted EBITDA 1,767, both USD millions. Also verified in release.pdf page 1."
+  }
+]

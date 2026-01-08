@@ -71,6 +71,8 @@ class Store:
 
     def check_embedding_identity(self, gateway):
         identity = gateway.settings.base_url + '|' + gateway.settings.embedding_model
+        if gateway.settings.openclaw_embedding_model:
+            identity += '|' + gateway.settings.openclaw_embedding_model
         previous = self.meta('embedding_identity')
         populated = self.db.execute('SELECT 1 FROM embeddings LIMIT 1').fetchone()
         if previous and previous != identity and populated:

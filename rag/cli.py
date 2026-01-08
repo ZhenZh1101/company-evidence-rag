@@ -98,6 +98,7 @@ def main():
         p.add_argument('--top-k', type=int, default=10)
         p.add_argument('--no-rewrite', action='store_true')
         p.add_argument('--mode', choices=['hybrid','lexical','dense'], default='hybrid')
+        p.add_argument('--language', choices=['en', 'zh-CN'], default='en', help='Answer and warning language (default: en)')
     serve = sub.add_parser('serve', help='Serve local web UI and API')
     serve.add_argument('--port', type=int, default=8000)
     args = parser.parse_args()
@@ -131,7 +132,7 @@ def main():
                 count = store.embed_pending(gateway, args.batch_size, lambda n: print(f'Embedded {n} new unique chunks', file=sys.stderr, flush=True))
                 output(dict(new_vectors=count, **store.stats()))
             else:
-                options = {k:getattr(args,k) for k in ('companies','categories','date_from','date_to','top_k','mode')}
+                options = {k:getattr(args,k) for k in ('companies','categories','date_from','date_to','top_k','mode','language')}
                 options['rewrite'] = not args.no_rewrite
                 output(getattr(RAG(store,gateway),args.command)(args.question, **options))
     except (ValueError, RuntimeError, OSError) as exc:

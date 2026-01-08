@@ -37,7 +37,11 @@ class WebTests(unittest.TestCase):
                         {"Origin": "https://attacker.example"}, {"Origin": "null"},
                         {"Origin": "http://127.0.0.1:9000"}, {"Sec-Fetch-Site": "cross-site"}):
             with self.subTest(headers=headers):
-                self.assertEqual(self.client.get("/api/stats", headers=headers).status_code, 403)
+                denied = self.client.get("/api/stats", headers=headers)
+                self.assertEqual(denied.status_code, 403)
+                self.assertEqual(denied.json()['error_messages'], {
+                    'en': 'Only local same-origin access is allowed.', 'zh-CN': '仅允许本机同源访问。'})
+                self.assertEqual(denied.json()['detail'], denied.json()['error_messages']['en'])
         response = self.client.get("/api/stats", headers={"Origin": "http://127.0.0.1:8000"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["documents"], 1)
@@ -45,12 +49,48 @@ class WebTests(unittest.TestCase):
     def test_request_bounds_dates_and_company_validation(self):
         for fields in ({"question": " "}, {"question": "x" * 4001}, {"top_k": 21},
                        {"top_k": 0}, {"mode": "unknown"}, {"companies": [""]},
+                       {"language": "fr"}, {"language": ""}, {"language": None},
                        {"companies": ["UNKNOWN"]}, {"date_from": "2025-02-30"},
                        {"date_from": "2025-02-01", "date_to": "2025-01-01"}):
             with self.subTest(fields=fields):
                 response = self.client.post("/api/ask", json={
                     "question": "Revenue", "mode": "lexical", "rewrite": False, **fields})
                 self.assertEqual(response.status_code, 422)
+        self.gateway.chat.assert_not_called()
+        self.gateway.embed.assert_not_called()
+
+    def test_validation_language_prefers_body_and_errors_include_both_languages(self):
+        for fields, headers, language in (
+            ({'language': 'zh-CN'}, {}, 'zh-CN'),
+            ({'language': 'en'}, {'Accept-Language': 'zh-CN'}, 'en'),
+            ({}, {'Accept-Language': 'zh-CN'}, 'zh-CN'),
+            ({'language': 'fr'}, {'Accept-Language': 'zh-CN'}, 'zh-CN'),
+        ):
+            with self.subTest(fields=fields, headers=headers):
+                response = self.client.post('/api/ask', json={'question': ' ', **fields}, headers=headers)
+                self.assertEqual(response.status_code, 422)
+                result = response.json()
+                question_error = next(error for error in result['detail'] if error['loc'] == ['body', 'question'])
+                expected = '请输入问题。' if language == 'zh-CN' else 'Value error, Enter a question.'
+                self.assertEqual(question_error['msg'], expected)
+                self.assertIn('Enter a question.', result['error_messages']['en'])
+                self.assertIn('请输入问题。', result['error_messages']['zh-CN'])
+                self.assertEqual(response.headers['x-content-type-options'], 'nosniff')
+        self.gateway.chat.assert_not_called()
+        self.gateway.embed.assert_not_called()
+
+    def test_runtime_errors_follow_body_language_and_preserve_dynamic_details(self):
+        for language in ('en', 'zh-CN'):
+            with self.subTest(language=language):
+                response = self.client.post('/api/ask', json={
+                    'question': 'Revenue', 'companies': ['UNKNOWN'], 'mode': 'lexical',
+                    'rewrite': False, 'language': language,
+                }, headers={'Accept-Language': 'zh-CN' if language == 'en' else 'en'})
+                self.assertEqual(response.status_code, 422)
+                result = response.json()
+                self.assertEqual(result['error_messages'], {
+                    'en': 'Unknown company filter: UNKNOWN', 'zh-CN': '未知公司筛选条件：UNKNOWN'})
+                self.assertEqual(result['detail'], result['error_messages'][language])
         self.gateway.chat.assert_not_called()
         self.gateway.embed.assert_not_called()
 
@@ -63,12 +103,26 @@ class WebTests(unittest.TestCase):
         self.assertEqual(page.headers["x-content-type-options"], "nosniff")
         self.assertEqual(page.headers["cache-control"], "no-store")
         self.assertNotIn("TEST_SECRET", page.text)
+        document = BeautifulSoup(page.text, "html.parser")
+        self.assertEqual(document.html["lang"], "en")
+        language_options = document.select("select#language option")
+        self.assertEqual({option["value"] for option in language_options}, {"en", "zh-CN"})
+        selected = next((option for option in language_options if option.has_attr("selected")), language_options[0])
+        self.assertEqual(selected["value"], "en")
         response = self.client.get(f"/api/source/{self.chunk_id}")
         self.assertIn("application/json", response.headers["content-type"])
         self.assertEqual(response.json()["text"], self.evidence)
         self.assertEqual(response.json()["locator"], "page 2")
         self.assertEqual(response.json()["company"], "NOC")
-        self.assertEqual(self.client.get("/api/source/999999").status_code, 404)
+        missing_source = self.client.get("/api/source/999999")
+        self.assertEqual(missing_source.status_code, 404)
+        self.assertEqual(missing_source.json()["detail"], "Source passage not found.")
+        chinese_source = self.client.get("/api/source/999999", headers={"Accept-Language": "zh-CN"})
+        self.assertEqual(chinese_source.status_code, 404)
+        self.assertEqual(chinese_source.json()["detail"], "未找到该原文片段。")
+        self.assertEqual(missing_source.json()['error_messages'], chinese_source.json()['error_messages'])
+        self.assertEqual(missing_source.json()['error_messages'], {
+            'en': 'Source passage not found.', 'zh-CN': '未找到该原文片段。'})
 
     def test_answer_uses_real_store_and_gateway_errors_are_sanitized(self):
         self.gateway.chat.side_effect = None
@@ -87,7 +141,53 @@ class WebTests(unittest.TestCase):
         with self.assertLogs("rag.web", level="ERROR") as logs:
             response = self.client.post("/api/ask", json=payload)
         self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()['detail'], response.json()['error_messages']['en'])
+        self.assertEqual(response.json()['error_messages']['zh-CN'], '问答失败，请检查本地模型网关是否可用、凭据配置以及索引状态。')
         self.assertNotIn("TEST_SECRET", response.text + " ".join(logs.output))
+
+    def test_answer_language_defaults_to_english_and_can_be_chinese(self):
+        self.gateway.chat.side_effect = None
+        for language, question, answer, instruction in (
+            (None, "Revenue 收入是多少？", "Revenue was USD 100 million. [S1]", "English (en)"),
+            ("zh-CN", "What was Revenue?", "收入为一亿美元。[S1]", "Simplified Chinese (zh-CN)"),
+        ):
+            with self.subTest(language=language):
+                self.gateway.chat.reset_mock()
+                self.gateway.chat.return_value = json.dumps({
+                    "answer": answer,
+                    "insufficient_evidence": False,
+                    "citations": [{"label": "S1", "quote": "Revenue was USD 100 million."}],
+                })
+                payload = {"question": question, "mode": "lexical", "rewrite": False}
+                if language:
+                    payload["language"] = language
+                response = self.client.post("/api/ask", json=payload)
+                self.assertEqual(response.status_code, 200)
+                result = response.json()
+                self.assertEqual(result["language"], language or "en")
+                self.assertEqual(result["answer"], answer)
+                self.assertEqual(result["citations"][0]["quote"], "Revenue was USD 100 million.")
+                self.gateway.chat.assert_called_once()
+                self.assertIn(instruction, self.gateway.chat.call_args.args[0][0]["content"])
+
+    def test_no_evidence_response_uses_requested_language_without_model_calls(self):
+        for language, expected in (
+            ("en", "No usable evidence was found within the selected filters. Check the import status or adjust the filters."),
+            ("zh-CN", "当前筛选范围内没有检索到可用证据。请检查导入状态或调整筛选条件。"),
+        ):
+            with self.subTest(language=language):
+                response = self.client.post("/api/ask", json={
+                    "question": "Unmatchedxyz", "mode": "lexical", "rewrite": False,
+                    "language": language,
+                })
+                self.assertEqual(response.status_code, 200)
+                result = response.json()
+                self.assertEqual(result["answer"], expected)
+                self.assertEqual(result["answer_code"], "no_evidence")
+                self.assertTrue(result["insufficient_evidence"])
+                self.assertEqual(result["citations"], [])
+        self.gateway.chat.assert_not_called()
+        self.gateway.embed.assert_not_called()
 
     def test_markdown_answer_formats_tables_lists_and_code_without_losing_raw_answer(self):
         answer = '## 结果\n\n**收入** [S1]\n\n- 第一项\n- 第二项\n\n| 公司 | 收入 |\n| --- | ---: |\n| NOC | 100 |\n\n> 原文说明\n\n```python\nprint("<value>")\n```'
