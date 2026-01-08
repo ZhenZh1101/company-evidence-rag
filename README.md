@@ -39,6 +39,7 @@ Chat 和 embedding 默认都使用 `http://127.0.0.1:18789/v1` 下的 `openclaw/
 
 - 归档目录以根 `index.json` 和发布 `meta.json` 为依据，保留正文及附件，排除爬虫审计、索引副本、媒体链接和已知转换副本。
 - 普通目录或单文件也可导入：`company-rag ingest /path/to/reports --company AAPL`。没有可靠元数据时日期为空，不根据文件名猜日期。
+- 公司名称和别名从归档记录或 `meta.json` 的 `company` / `company_name`（字符串）及 `company_aliases`（字符串数组）导入，例如 `{"ticker":"ACME","company":"Acme Corporation","company_aliases":["Acme","艾克米"]}`。自动识别使用这些名称和已导入的 ticker，不内置公司名单，也不猜测简称；缺少别名时可直接输入 ticker 或选择公司。升级前的索引需重新运行原有 `ingest` 命令以载入名称和别名，相同文本仍复用向量缓存。
 - 支持 HTML、TXT、Markdown、PDF、DOCX、PPTX、XLSX、XLS、CSV。Office 表格保留行列和表头；PDF 优先 Poppler 的版式文本提取，没有 Poppler 时使用 pypdf。
 - `--ocr` 为没有文字层的 PDF 页面启用本地 Tesseract 英文识别，需要 `pdftoppm` 和 `tesseract`（本机已安装；新 macOS 可用 `brew install poppler tesseract`）。引用会标注 OCR，识别结果仍需对照原件。增量更新应保留同样的 `--ocr` 选项；切换解析模式会重新解析。
 - `--prune` 同步删除已不在来源中的索引记录。发现元数据读取错误时保留未能确认的旧记录，只允许清理明确排除的副本。

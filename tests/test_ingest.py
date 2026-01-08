@@ -111,6 +111,23 @@ class IngestTests(unittest.TestCase):
             self.assertEqual(len(report), 5)
             self.assertTrue(all(r.get("kind") == "error" for r in report))
 
+    def test_invalid_company_alias_metadata_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root / "release"
+            folder.mkdir()
+            (folder / "report.txt").write_text("Company revenue disclosure.")
+            (root / "index.json").write_text(json.dumps([{"folder": "release"}]))
+            for aliases in ("Acme", None, [""], [" "], [123]):
+                with self.subTest(aliases=aliases):
+                    (folder / "meta.json").write_text(json.dumps({
+                        "ticker": "ACME", "company_aliases": aliases, "files": [{"path": "report.txt"}]}))
+                    sources, report = discover(root)
+                    self.assertEqual(sources, [])
+                    self.assertEqual(len(report), 1)
+                    self.assertEqual(report[0]["kind"], "error")
+                    self.assertIn("company_aliases", report[0]["reason"])
+
     def test_capture_wrappers_suppressed_only_when_canonical_article_exists(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -197,7 +214,7 @@ class IngestTests(unittest.TestCase):
             for name, _, _, expected in cases:
                 self.assertEqual({s.path.name for s in sources if s.path.parent.name == name}, expected)
 
-    def test_nokia_linked_attachments_do_not_inherit_parent_dates(self):
+    def test_linked_attachments_do_not_inherit_parent_dates_for_any_company(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             folder = root / "blog"
@@ -211,18 +228,21 @@ class IngestTests(unittest.TestCase):
             ]
             for f in files:
                 (folder / f["path"]).write_text("Document")
-            (folder / "meta.json").write_text(json.dumps({"ticker": "NOK", "url": page_url, "files": files}))
             (root / "index.json").write_text(json.dumps([{"folder": "blog", "category": "blogs", "url": page_url, "publication_date": "2024-10-21", "date_basis": "Parent CMS publication date"}]))
-            sources, report = discover(root)
-            self.assertEqual(report, [])
-            by_name = {s.path.name: s for s in sources}
-            self.assertIsNone(by_name["later.pdf"].publication_date)
-            self.assertIsNone(by_name["later.pdf"].publication_period)
-            self.assertIn("unverified", by_name["later.pdf"].date_basis)
-            self.assertEqual(by_name["later.pdf"].aliases[0]["publication_date"], "2024-10-21")
-            self.assertEqual(by_name["dated.pdf"].publication_date, "2025-07-04")
-            self.assertEqual(by_name["direct.pdf"].publication_date, "2024-10-21")
-            self.assertEqual(by_name["article.html"].publication_date, "2024-10-21")
+            for ticker in ("NOK", "ACME"):
+                with self.subTest(ticker=ticker):
+                    (folder / "meta.json").write_text(json.dumps({"ticker": ticker, "url": page_url, "files": files}))
+                    sources, report = discover(root)
+                    self.assertEqual(report, [])
+                    self.assertEqual({s.company for s in sources}, {ticker})
+                    by_name = {s.path.name: s for s in sources}
+                    self.assertIsNone(by_name["later.pdf"].publication_date)
+                    self.assertIsNone(by_name["later.pdf"].publication_period)
+                    self.assertIn("unverified", by_name["later.pdf"].date_basis)
+                    self.assertEqual(by_name["later.pdf"].aliases[0]["publication_date"], "2024-10-21")
+                    self.assertEqual(by_name["dated.pdf"].publication_date, "2025-07-04")
+                    self.assertEqual(by_name["direct.pdf"].publication_date, "2024-10-21")
+                    self.assertEqual(by_name["article.html"].publication_date, "2024-10-21")
 
     def test_chunk_repeats_headers_and_preserves_every_table_row(self):
         rows = [f"Metric {i} | {i * 10}.5 | {i * 9}.5" for i in range(100)]

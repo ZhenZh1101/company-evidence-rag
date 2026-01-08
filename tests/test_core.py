@@ -12,7 +12,7 @@ import numpy as np
 
 from rag.client import Gateway, parse_json
 from rag.config import Settings
-from rag.ingest import Segment, Source
+from rag.ingest import Segment, Source, discover
 from rag.pipeline import RAG, mentioned_companies
 from rag.store import Store
 
@@ -38,12 +38,25 @@ class FakeGateway:
 
 
 class StoreAndRAGTests(unittest.TestCase):
-    def test_new_company_names_and_chinese_adjacent_tickers_keep_issuer_scope(self):
-        known = {'CBRS', 'NOC', 'NOK', 'AMKR', 'VST'}
-        self.assertEqual(mentioned_companies('NOK的销售额和NOC的销售额', known), ['NOC','NOK'])
-        self.assertEqual(mentioned_companies('诺基亚、Amkor和Vistra', known), ['AMKR','NOK','VST'])
-        self.assertEqual(mentioned_companies('NOKX VSTX XAMKR', known), [])
-        self.assertEqual(mentioned_companies('Nokia and VST', {'CBRS','NOC'}), [])
+    def test_supplied_company_aliases_match_exact_names_and_keep_issuer_scope(self):
+        aliases = {'ALFA': ['Acme Labs', '艾克米', 'Shared Name'],
+                   'BETA': ['B&B, Inc.', 'Shared Name'], 'PLAIN': []}
+        for question, expected in (
+            ('alfa的销售额和BETA的销售额', ['ALFA', 'BETA']),
+            ('aCmE lAbS revenue', ['ALFA']),
+            ('艾克米的销售额', ['ALFA']),
+            ('(B&B, Inc.) revenue', ['BETA']),
+            ('Shared Name revenue', ['ALFA', 'BETA']),
+            ('ALFAX XBETA PLAIN_ Acme LabsPlus MyAcme Labs', []),
+            ('Acme revenue', []),
+            ('Labs revenue', []),
+            ('Unknown Company revenue', []),
+        ):
+            with self.subTest(question=question):
+                self.assertEqual(mentioned_companies(question, aliases, aliases), expected)
+        self.assertEqual(mentioned_companies('Acme Labs and BETA', {'PLAIN'}, aliases), [])
+        self.assertEqual(mentioned_companies('Acme Labs revenue', {'ALFA'}), [])
+        self.assertEqual(mentioned_companies('艾克米 revenue', {'ALFA'}), [])
 
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -52,10 +65,11 @@ class StoreAndRAGTests(unittest.TestCase):
         self.store = Store(self.root / "test.sqlite3")
         self.addCleanup(self.store.db.close)
 
-    def add(self, key, text, company="NOC", publication_date="2026-07-21", period="2026-Q2"):
+    def add(self, key, text, company="NOC", publication_date="2026-07-21", period="2026-Q2", company_aliases=()):
         source = Source(key, company, key, "results", publication_date, period,
                         "disclosure date" if publication_date else "quarter only", "local",
-                        "https://example.test/" + key, self.root / (key + ".txt"))
+                        "https://example.test/" + key, self.root / (key + ".txt"),
+                        company_aliases=list(company_aliases))
         segments = [Segment(t, f"paragraph {i + 1}") for i, t in enumerate(text if isinstance(text, list) else [text])]
         self.store.put(source, self.root, "fingerprint-" + key, "hash-" + key, segments)
         return source
@@ -78,15 +92,73 @@ class StoreAndRAGTests(unittest.TestCase):
         self.assertEqual(results["hybrid"]["score"], round(2 / 62, 6))
 
     def test_company_specific_subqueries_do_not_search_the_other_company(self):
-        self.add('cb', 'Quarter one revenue.', company='CBRS')
-        self.add('noc', 'Quarter two sales.', company='NOC')
-        gateway = FakeGateway(replies=[json.dumps({'queries': ['CBRS quarter one revenue', 'NOC quarter two sales']})])
+        self.add('cedar', 'Quarter one revenue.', company='CDR', company_aliases=['Cedar Research'])
+        self.add('harbor', 'Quarter two sales.', company='HBR', company_aliases=['Harbor Labs'])
+        gateway = FakeGateway(replies=[json.dumps({'queries': ['Cedar Research quarter one revenue', 'Harbor Labs quarter two sales']})])
         with patch.object(self.store, 'lexical', wraps=self.store.lexical) as search:
-            RAG(self.store, gateway).search('Compare CBRS and NOC revenue', companies=['CBRS','NOC'], mode='lexical')
+            RAG(self.store, gateway).search('Compare Cedar Research and Harbor Labs revenue', mode='lexical')
         calls = [(call.args[0], call.kwargs['companies']) for call in search.call_args_list]
-        self.assertEqual(calls[2:], [('CBRS quarter one revenue', ['CBRS']), ('NOC quarter two sales', ['NOC'])])
+        self.assertEqual(calls[2:], [('Cedar Research quarter one revenue', ['CDR']), ('Harbor Labs quarter two sales', ['HBR'])])
         planner_data = json.loads(gateway.messages[0][1]['content'])
-        self.assertEqual(set(planner_data['company_document_titles']), {'CBRS','NOC'})
+        self.assertEqual(set(planner_data['company_document_titles']), {'CDR','HBR'})
+        self.assertEqual(planner_data['company_aliases'], {'CDR': ['Cedar Research'], 'HBR': ['Harbor Labs']})
+
+    def test_archive_company_aliases_reimport_without_reembedding_and_delete_with_document(self):
+        from rag.cli import ingest
+        archive = self.root / 'archive'
+        folder = archive / 'release'
+        folder.mkdir(parents=True)
+        (folder / 'report.txt').write_text('Revenue was 100 million.')
+        metadata = {'ticker': 'ALFA', 'company': 'Acme Holdings', 'company_name': 'Acme Labs',
+                    'company_aliases': [' 艾克米 ', 'Acme   Labs'], 'files': [{'path': 'report.txt'}]}
+        (folder / 'meta.json').write_text(json.dumps(metadata))
+        (archive / 'index.json').write_text(json.dumps([{'folder': 'release', 'company_aliases': ['Acme Group']}]))
+        sources, skipped = discover(archive)
+        self.assertEqual(skipped, [])
+        self.assertEqual(sources[0].company_aliases, ['Acme Group', 'Acme Holdings', 'Acme Labs', '艾克米'])
+        args = SimpleNamespace(paths=[str(archive)], company=None, limit=None, prune=False,
+                               report=str(self.root / 'import-report.json'))
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertFalse(ingest(args, self.store))
+        self.add('other', 'Revenue was 200 million.', company='BETA')
+        self.assertCountEqual(self.store.company_aliases()['ALFA'], sources[0].company_aliases)
+        self.assertEqual(self.store.company_aliases()['BETA'], [])
+        gateway = FakeGateway()
+        self.assertEqual(self.store.embed_pending(gateway), 2)
+        rag = RAG(self.store, gateway)
+        result = rag.search('Acme Labs revenue', mode='lexical', rewrite=False)
+        self.assertEqual(result['filters']['companies'], ['ALFA'])
+        self.assertEqual({s['company'] for s in result['sources']}, {'ALFA'})
+        result = rag.search('Acme Labs revenue', companies=['BETA'], mode='lexical', rewrite=False)
+        self.assertEqual({s['company'] for s in result['sources']}, {'BETA'})
+
+        metadata.update(company_name='Acme Renewed', company_aliases=['艾克米'])
+        (folder / 'meta.json').write_text(json.dumps(metadata))
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertFalse(ingest(args, self.store))
+        self.assertEqual(json.loads(Path(args.report).read_text())['imported'], 1)
+        self.assertEqual(self.store.embed_pending(gateway), 0)
+        self.assertCountEqual(self.store.company_aliases()['ALFA'], ['Acme Group', 'Acme Holdings', 'Acme Renewed', '艾克米'])
+        self.assertIsNone(rag.search('Acme Labs revenue', mode='lexical', rewrite=False)['filters']['companies'])
+        self.assertEqual(rag.search('Acme Renewed revenue', mode='lexical', rewrite=False)['filters']['companies'], ['ALFA'])
+        with Store(self.root / 'test.sqlite3') as reopened:
+            self.assertEqual(reopened.company_aliases(), self.store.company_aliases())
+        with self.store.db:
+            self.store.db.execute('DELETE FROM documents WHERE id=?', (sources[0].key,))
+        self.assertEqual(self.store.company_aliases(), {'BETA': []})
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM company_aliases').fetchone()[0], 0)
+
+    def test_alias_comparison_ask_uses_both_company_scopes(self):
+        self.add('cedar', 'Revenue was 100 million.', company='CDR', company_aliases=['Cedar Research'])
+        self.add('harbor', 'Revenue was 200 million.', company='HBR', company_aliases=['Harbor Labs'])
+        gateway = FakeGateway(replies=[json.dumps({'labels': ['S1', 'S2']}), json.dumps({
+            'answer': 'Insufficient evidence.', 'insufficient_evidence': True, 'citations': []})])
+        result = RAG(self.store, gateway).ask('Compare Cedar Research and Harbor Labs revenue',
+                                            mode='lexical', rewrite=False)
+        self.assertEqual(result['filters']['companies'], ['CDR', 'HBR'])
+        self.assertEqual({s['company'] for s in result['sources']}, {'CDR', 'HBR'})
+        selection = json.loads(gateway.messages[0][1]['content'])
+        self.assertEqual({s['company'] for s in selection['evidence']}, {'CDR', 'HBR'})
 
     def test_comparison_selector_preserves_full_evidence_and_relabels_citations(self):
         cb = 'CBRS revenue 193.4 million in quarter one.'

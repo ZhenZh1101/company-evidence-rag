@@ -29,6 +29,9 @@ class Store:
           id INTEGER PRIMARY KEY,document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
           ordinal INTEGER NOT NULL,text TEXT NOT NULL,locator TEXT NOT NULL,text_hash TEXT NOT NULL,
           UNIQUE(document_id,ordinal));
+        CREATE TABLE IF NOT EXISTS company_aliases(
+          document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+          alias TEXT NOT NULL, PRIMARY KEY(document_id,alias));
         CREATE INDEX IF NOT EXISTS chunks_hash ON chunks(text_hash);
         CREATE INDEX IF NOT EXISTS documents_filter ON documents(company,publication_date,category);
         CREATE TABLE IF NOT EXISTS embeddings(text_hash TEXT PRIMARY KEY,dimension INTEGER NOT NULL,vector BLOB NOT NULL);
@@ -57,6 +60,15 @@ class Store:
         row = self.db.execute('SELECT value FROM metadata WHERE key=?', (key,)).fetchone()
         return row[0] if row else None
 
+    def company_aliases(self):
+        companies = {}
+        for row in self.db.execute('''SELECT DISTINCT d.company,a.alias FROM documents d
+                                     LEFT JOIN company_aliases a ON a.document_id=d.id'''):
+            names = companies.setdefault(row['company'], [])
+            if row['alias'] is not None:
+                names.append(row['alias'])
+        return companies
+
     def check_embedding_identity(self, gateway):
         identity = gateway.settings.base_url + '|' + gateway.settings.embedding_model
         previous = self.meta('embedding_identity')
@@ -77,6 +89,8 @@ class Store:
         with self.db:
             self.db.execute('DELETE FROM documents WHERE id=?', (source.key,))
             self.db.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', values)
+            self.db.executemany('INSERT INTO company_aliases VALUES (?,?)',
+                                [(source.key, name) for name in sorted(set(source.company_aliases))])
             for i, segment in enumerate(segments):
                 row = self.db.execute('INSERT INTO chunks(document_id,ordinal,text,locator,text_hash) VALUES (?,?,?,?,?)',
                                       (source.key, i, segment.text, segment.locator, digest(segment.text)))

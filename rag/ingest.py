@@ -29,6 +29,7 @@ class Source:
     source_url: str
     path: Path
     aliases: list[dict] = field(default_factory=list)
+    company_aliases: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -54,6 +55,13 @@ def _source(path: Path, company: str, item: dict, meta: dict, url: str) -> Sourc
         if not isinstance(publication_date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", publication_date):
             raise ValueError(f"Publication date must be an ISO day or null: {publication_date!r}")
         date.fromisoformat(publication_date)
+    company_aliases = set()
+    for record in (meta, item):
+        names = record.get("company_aliases", [])
+        if not isinstance(names, list) or any(not isinstance(name, str) or not name.strip() for name in names):
+            raise ValueError("company_aliases must be a list of nonempty strings")
+        names = [*names, record.get("company_name"), record.get("company")]
+        company_aliases.update(" ".join(name.split()) for name in names if isinstance(name, str) and name.strip())
     return Source(
         key=hashlib.sha256(f"{company}\0{path}".encode()).hexdigest(), company=company,
         title=item.get("title") or meta.get("title") or path.stem,
@@ -62,6 +70,7 @@ def _source(path: Path, company: str, item: dict, meta: dict, url: str) -> Sourc
         publication_period=item.get("publication_period", meta.get("publication_period")),
         date_basis=item.get("date_basis") or meta.get("date_basis") or "Unknown publication date",
         scope=item.get("scope") or meta.get("scope") or "local", source_url=url, path=path,
+        company_aliases=sorted(company_aliases),
     )
 
 
@@ -187,7 +196,7 @@ def discover(root: Path, company: str | None = None) -> tuple[list[Source], list
                             source_item = {**item, "publication_date": f.get("publication_date"),
                                            "publication_period": f.get("publication_period"),
                                            "date_basis": f.get("date_basis") or "Attachment date supplied by archive"}
-                        elif (issuer == "NOK" and f.get("kind") in {"attachment", "document_attachment", "pdf_attachment", "alternative_attachment"}
+                        elif (f.get("kind") in {"attachment", "document_attachment", "pdf_attachment", "alternative_attachment"}
                               and item.get("category", "").startswith(("blog", "editorial", "corporate_site", "corporate_event", "ir_event", "technology"))
                               and url != (item.get("url") or meta.get("url"))):
                             source_item = {**item, "publication_date": None, "publication_period": None,
