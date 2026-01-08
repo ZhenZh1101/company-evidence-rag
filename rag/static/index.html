@@ -45,10 +45,10 @@
       <h1>向公司材料提问，回到原文查证。</h1>
       <p class="lede">检索公告、财报和演示材料，将回答与原文出处放在一起。</p>
       <form id="ask-form">
-        <div class="question-box"><label for="question" class="question-label">你想了解什么？</label><textarea id="question" required maxlength="4000" placeholder="例如：NOC 最新年报中提到的主要业务风险有哪些？请引用原文，并注明报告期间。"></textarea><div class="question-footer"><span>明确公司、期间和指标，有助于定位证据。</span><button class="primary" id="submit" type="submit">检索并回答 <span aria-hidden="true" style="color:inherit">↗</span></button></div></div>
+        <div class="question-box"><label for="question" class="question-label">你想了解什么？</label><textarea id="question" required maxlength="4000" placeholder="例如：所选公司最新年报中提到的主要业务风险有哪些？请引用原文，并注明报告期间。"></textarea><div class="question-footer"><span>明确公司、期间和指标，有助于定位证据。</span><button class="primary" id="submit" type="submit">检索并回答 <span aria-hidden="true" style="color:inherit">↗</span></button></div></div>
         <div class="options"><label><input id="rewrite" type="checkbox" checked>跨语言查询改写</label><label for="mode">检索方式<select id="mode"><option value="hybrid">混合检索</option><option value="lexical">关键词检索</option><option value="dense">向量检索</option></select></label><label for="top-k">证据数<select id="top-k"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select></label></div>
       </form>
-      <div class="examples" aria-label="示例问题"><button class="example" type="button">概括 NOC 最新年报中的主要风险因素，并引用原文。</button><button class="example" type="button">CBRS 披露了哪些业务进展？请按日期梳理。</button></div>
+      <div class="examples" aria-label="示例问题"><button class="example" type="button">概括所选公司最新年报中的主要风险因素，并引用原文。</button><button class="example" type="button">所选公司披露了哪些业务进展？请按日期梳理。</button></div>
       <div id="error" class="message error" role="alert" hidden></div>
       <div id="loading" class="message loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>正在检索材料并生成有出处的回答…</span></div>
       <div id="empty" class="empty"><div><span class="step">01 / SCOPE</span><b>限定研究范围</b><p>按公司和发布日期缩小范围，也可以同时检索多家公司的材料。</p></div><div><span class="step">02 / RETRIEVE</span><b>结合关键词与语义</b><p>混合检索同时寻找准确术语与语义相关的原文片段。</p></div><div><span class="step">03 / VERIFY</span><b>核对证据出处</b><p>通过引用编号、原文片段和源链接，检查回答是否有材料支持。</p></div></div>

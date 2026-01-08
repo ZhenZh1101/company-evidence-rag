@@ -1,0 +1,6 @@
+[
+  {"id":"cbrs_chinese","question":"CBRS 2026 年第一季度 GAAP 收入和 core 收入分别是多少？请说明单位和口径。","companies":["CBRS"]},
+  {"id":"noc_chinese","question":"NOC 2026 年第二季度的销售额和上半年累计销售额分别是多少？请不要混淆期间。","companies":["NOC"]},
+  {"id":"comparison","question":"分别列出 CBRS 2026 年第一季度 GAAP 收入与 NOC 2026 年第二季度公司总销售额，统一用百万美元，并注明期间不同。","companies":["CBRS","NOC"]},
+  {"id":"unknown","question":"CBRS 2028 年第四季度已经实现的经审计营业收入是多少？","companies":["CBRS"]}
+]
