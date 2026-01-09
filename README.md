@@ -1,10 +1,10 @@
-# 上市公司文档 RAG
+# Public Company Document RAG
 
-本地运行的 **Advanced RAG**：归档感知的文档导入、BM25 + 向量混合检索、公司与披露日期筛选、英语/简体中文界面和问答、可核查的原文引用。向量检索使用免费开源、自托管的 [Qdrant](https://github.com/qdrant/qdrant)，不需要云服务账户；SQLite 保留文档、全文索引和 embedding 缓存。默认语言为英语。方案依据和取舍见 [架构说明](docs/architecture.md)，参考论文为目录内 `2312.10997v5.pdf`。
+A locally running **Advanced RAG** system with archive-aware document ingestion, hybrid BM25 + vector retrieval, company and disclosure-date filters, an English/Simplified Chinese interface and Q&A, and verifiable source quotations. Vector retrieval uses the free, open-source, self-hosted [Qdrant](https://github.com/qdrant/qdrant), with no cloud account required; SQLite stores documents, the full-text index, and the embedding cache. English is the default language. See the [architecture notes](docs/architecture.md) for design decisions and tradeoffs, and `2312.10997v5.pdf` in this directory for the reference paper.
 
-## 启动
+## Getting Started
 
-当前工作目录已配置 `.venv`。先启动 Docker，再在本目录运行：
+This working directory already has a configured `.venv`. Start Docker, then run the following from this directory:
 
 ```bash
 .venv/bin/python -m pip install -e '.[test]'
@@ -13,11 +13,11 @@ docker compose up -d
 .venv/bin/company-rag serve
 ```
 
-`sync-vectors` 将已有 SQLite embedding 缓存同步到 Qdrant，不调用模型、不产生重新向量化费用，可以中断后重跑；未向量化的分块仍需执行 `embed`。升级时先停止已有问答服务，完成同步后重启。Qdrant 使用固定版本镜像，数据保存在 `data/qdrant/`，默认仅监听本机 `127.0.0.1:6333`，关闭遥测；启动方法参考 [Qdrant 官方文档](https://qdrant.tech/documentation/quickstart/)。数据库软件免费，原有模型 API 的计费方式不变。
+`sync-vectors` synchronizes the existing SQLite embedding cache to Qdrant without calling a model or incurring re-embedding costs. It can be interrupted and rerun; chunks without embeddings still require `embed`. When upgrading, stop the running Q&A service, complete the sync, and restart it. Qdrant uses a pinned image version, stores data in `data/qdrant/`, listens only on local `127.0.0.1:6333` by default, and has telemetry disabled. See the [official Qdrant documentation](https://qdrant.tech/documentation/quickstart/) for startup instructions. The database software is free; existing model API billing remains unchanged.
 
-打开 <http://127.0.0.1:8000>。界面初次打开默认使用英语，可通过 Language 切换英语和简体中文，并在浏览器中记住选择；所选语言同时控制新回答的语言，原文引用保持来源语言。服务仅监听本机；端口可通过 `--port 8001` 修改。
+Open <http://127.0.0.1:8000>. The interface defaults to English on first use. Use the Language selector to switch between English and Simplified Chinese; the browser remembers your choice. The selected language also controls new answers, while source quotations retain their original language. The service listens only on the local machine; use `--port 8001` to change the port.
 
-新机器需要 Python 3.11 或更高版本，以及运行中的 Docker 和 Compose：
+On a new machine, install Python 3.11 or later and have Docker running with Compose available:
 
 ```bash
 python3.12 -m venv .venv
@@ -26,17 +26,17 @@ docker compose up -d
 .venv/bin/company-rag doctor
 ```
 
-`doctor` 分别检查 Qdrant、embedding 和 Chat，某个端点失败时仍报告其他检查的结果；它会调用模型。只检查 Qdrant 是否就绪可运行 `curl --fail http://127.0.0.1:6333/readyz`。
+`doctor` checks Qdrant, embeddings, and Chat separately, reporting the other results even if one endpoint fails. It makes model calls. To check only whether Qdrant is ready, run `curl --fail http://127.0.0.1:6333/readyz`.
 
-Chat 和 embedding 默认都使用 `http://127.0.0.1:18789/v1`，请求体的 `model` 为 `openclaw/llm-gpt55`。Embedding 额外发送 `x-openclaw-model: openai/text-embedding-3-large`，文档和问题均使用此模型；Chat 不发送该请求头。优先读取环境变量 `RAG_API_KEY`，否则仅对本机地址读取 `~/.openclaw/openclaw.json` 的 `gateway.auth.token`。密钥不会写入数据库、日志或 Git。
+Chat and embeddings both default to `http://127.0.0.1:18789/v1`, with `model` set to `openclaw/llm-gpt55` in the request body. Embedding requests also send `x-openclaw-model: openai/text-embedding-3-large`; this model is used for both documents and questions. Chat requests do not send this header. Credentials are read from `RAG_API_KEY` first; otherwise, `gateway.auth.token` in `~/.openclaw/openclaw.json` is used only for local endpoints. Keys are never written to the database, logs, or Git.
 
-`RAG_EMBEDDING_OPENCLAW_MODEL` 控制上述 embedding 请求头，仅在 `RAG_EMBEDDING_MODEL` 以 `openclaw/` 开头时生效；显式设为空字符串时使用网关默认路由。实际路由模型也计入索引身份，切换后必须重新向量化，程序会拒绝混用旧向量。
+`RAG_EMBEDDING_OPENCLAW_MODEL` controls this embedding header and takes effect only when `RAG_EMBEDDING_MODEL` starts with `openclaw/`. Setting it explicitly to an empty string uses the gateway's default routing. The routed model is also part of the index identity, so changing it requires re-embedding; the application rejects mixing in old vectors.
 
-可用环境变量列在 [.env.example](.env.example)；需要自行 `export`，程序不执行 `.env` 文件。`RAG_DB_PATH` 默认 `data/rag.sqlite3`，CLI 全局 `--db` 可覆盖；`RAG_QDRANT_URL` 默认 `http://127.0.0.1:6333`。每个 SQLite 数据库按绝对路径派生独立 Qdrant collection；移动数据库路径或使用新的 Qdrant 实例后，重新执行 `sync-vectors`。保留 SQLite 缓存可重建向量索引，迁移不会删除原向量。切换 embedding endpoint/model 需要新数据库；不要混用向量空间。同名模型在服务端被替换时，程序无法自动识别，需重新构建数据库。
+Available environment variables are listed in [.env.example](.env.example). Export them yourself; the application does not execute `.env` files. `RAG_DB_PATH` defaults to `data/rag.sqlite3` and can be overridden with the global CLI option `--db`; `RAG_QDRANT_URL` defaults to `http://127.0.0.1:6333`. Each SQLite database gets a separate Qdrant collection derived from its absolute path. Run `sync-vectors` again after moving the database or switching to a new Qdrant instance. Keeping the SQLite cache lets you rebuild the vector index, and migration does not delete the original vectors. Changing the embedding endpoint or model requires a new database; do not mix vector spaces. If the server replaces a model under the same name, the application cannot detect it automatically, and the database must be rebuilt.
 
-### Embedding 和 Chat 都使用 OpenAI
+### Using OpenAI for Both Embeddings and Chat
 
-下面以 `text-embedding-3-large` 和 `gpt-4.1-mini` 为例，配置会同时用于文档向量化、在线问题向量化、查询改写、证据筛选和回答生成，覆盖 CLI、Web 及评测脚本：
+The following example uses `text-embedding-3-large` and `gpt-4.1-mini`. This configuration applies to document embeddings, live question embeddings, query rewriting, evidence selection, and answer generation across the CLI, web interface, and evaluation script:
 
 ```bash
 unset RAG_CHAT_BASE_URL RAG_CHAT_API_KEY RAG_CHAT_THINKING RAG_CHAT_REASONING_EFFORT
@@ -50,17 +50,17 @@ export RAG_DB_PATH=data/rag-openai.sqlite3
 .venv/bin/company-rag doctor
 ```
 
-如果已经设置 `OPENAI_API_KEY`，可用 `export RAG_API_KEY="$OPENAI_API_KEY"`；程序读取的是 `RAG_API_KEY`。开头的 `unset` 会清除先前 Z.AI 的 Chat 覆盖配置。密钥缺失时不会向 OpenAI 自动转发本机 OpenClaw 凭据。
+If `OPENAI_API_KEY` is already set, use `export RAG_API_KEY="$OPENAI_API_KEY"`; the application reads `RAG_API_KEY`. The initial `unset` clears any previous Z.AI Chat overrides. If the key is missing, local OpenClaw credentials are not automatically forwarded to OpenAI.
 
-**切换 embedding 服务需要重新向量化。** 使用上面的新数据库路径，将原来的 `ingest` 命令重新运行一次，再执行 `.venv/bin/company-rag embed`，完成后用 `.venv/bin/company-rag serve` 启动。原数据库保留；不要把旧 embedding 和 OpenAI embedding 混入同一索引。新数据库路径同样需用于后续 CLI、Web 和评测进程。
+**Switching embedding providers requires re-embedding.** Use the new database path above, rerun your original `ingest` command, then run `.venv/bin/company-rag embed`. Once complete, start the service with `.venv/bin/company-rag serve`. Keep the original database; do not mix old embeddings and OpenAI embeddings in one index. Use the new database path for subsequent CLI, web, and evaluation processes as well.
 
-参数依据 OpenAI Docs 的 [Embeddings 接口](https://developers.openai.com/api/reference/resources/embeddings/methods/create) 和 [Chat Completions 接口](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。Chat 使用 `max_completion_tokens` 指定输出预算；示例模型为支持 Chat Completions 的 [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini)，不需要推理参数。OpenAI embedding 单条输入上限为 8192 tokens；当前分块按字符划分，不是精确 token 计数，特殊字符密集或过长输入可能被服务端拒绝，程序不会静默截断文本。
+The parameters follow the OpenAI documentation for [Embeddings](https://developers.openai.com/api/reference/resources/embeddings/methods/create) and [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create). Chat uses `max_completion_tokens` for the output budget. The example model, [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini), supports Chat Completions and does not require reasoning parameters. OpenAI embeddings have an 8192-token limit per input. Current chunking is character-based rather than an exact token count, so unusually long inputs or inputs with many special characters may be rejected by the server; the application does not silently truncate text.
 
-更换 Chat 模型时，以该模型支持的参数为准：`RAG_CHAT_TEMPERATURE=none` 可以完全省略温度；`RAG_CHAT_REASONING_EFFORT` 可选 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`，未设时不发送，但各模型不一定支持全部值。`max_completion_tokens` 包含推理 tokens；系统的改写/筛选预算为 500，`doctor` 为 16，回答为 4000，因此要求强制推理的模型不能保证适配这些短预算。使用 OpenAI 时应取消 `RAG_CHAT_THINKING`。
+When changing Chat models, use the parameters that model supports. `RAG_CHAT_TEMPERATURE=none` omits temperature entirely. `RAG_CHAT_REASONING_EFFORT` accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max` and is omitted when unset, but individual models may not support every value. `max_completion_tokens` includes reasoning tokens. The system budgets 500 tokens for rewriting/selection, 16 for `doctor`, and 4000 for answers, so models that require reasoning may not work within these short budgets. Unset `RAG_CHAT_THINKING` when using OpenAI.
 
-### 在线 LLM 使用 Z.AI
+### Using Z.AI for the Live LLM
 
-在启动服务的终端配置独立的 Chat 接口；下面以支持关闭 thinking 的 `glm-4.7` 为例：
+Configure a separate Chat endpoint in the terminal where you start the service. This example uses `glm-4.7`, which supports disabling thinking:
 
 ```bash
 unset RAG_CHAT_REASONING_EFFORT
@@ -74,15 +74,15 @@ export RAG_CHAT_THINKING=disabled
 .venv/bin/company-rag serve
 ```
 
-CLI、Web 和评测脚本中的查询改写、跨公司证据筛选、回答生成及校验重试都会使用此 Chat 配置。文档向量化和在线问题向量化仍使用 `RAG_BASE_URL`、`RAG_API_KEY`、`RAG_EMBEDDING_MODEL`；仅切换 Chat 不需要重新建库。已有服务需在设置环境变量后重启。
+Query rewriting, cross-company evidence selection, answer generation, and validation retries in the CLI, web interface, and evaluation script all use this Chat configuration. Document embeddings and live question embeddings still use `RAG_BASE_URL`, `RAG_API_KEY`, and `RAG_EMBEDDING_MODEL`. Changing only Chat does not require rebuilding the database. Restart any running service after setting these environment variables.
 
-如需 **OpenAI embedding + Z.AI Chat**，先完成上一节的 OpenAI 配置和向量化，再执行本节的 Chat 配置即可。embedding 继续使用 OpenAI 密钥，Chat 使用独立的 Z.AI 密钥；无需再重建 OpenAI 向量索引。
+For **OpenAI embeddings + Z.AI Chat**, first complete the OpenAI configuration and embedding steps in the previous section, then apply the Chat configuration in this section. Embeddings continue to use the OpenAI key, while Chat uses a separate Z.AI key; the OpenAI vector index does not need to be rebuilt again.
 
-接口地址和参数依据 [Z.AI 官方接口文档](https://docs.z.ai/api-reference/llm/chat-completion)；[OpenAI 兼容接口说明](https://docs.z.ai/guides/develop/openai/python) 建议使用大于 0 的 temperature。这里关闭 thinking，适配改写/筛选的 500-token 上限和 `doctor` 的 16-token 检查。更换模型时需确认其支持这些参数；只支持 thinking 的模型（如 GLM-5.3）不能直接套用本例。`RAG_CHAT_TEMPERATURE` 默认 0，`RAG_CHAT_THINKING` 未设时不发送，设置时仅接受 `enabled` / `disabled`。
+The endpoint and parameters follow the [official Z.AI API documentation](https://docs.z.ai/api-reference/llm/chat-completion). Its [OpenAI-compatible API guide](https://docs.z.ai/guides/develop/openai/python) recommends a temperature greater than 0. Thinking is disabled here to fit the 500-token rewriting/selection limit and the 16-token `doctor` check. When changing models, confirm that they support these parameters; models that only support thinking, such as GLM-5.3, cannot use this example unchanged. `RAG_CHAT_TEMPERATURE` defaults to 0. `RAG_CHAT_THINKING` is omitted when unset and accepts only `enabled` / `disabled` when set.
 
-未指定 `RAG_CHAT_BASE_URL` 时沿用 `RAG_BASE_URL`；`RAG_CHAT_API_KEY` 优先用于 Chat，未设时仅在两个接口地址相同的情况下复用原密钥。独立 Chat 地址缺少密钥会报错，不会将本地网关凭据发送到远程服务。不要为切换在线 LLM 而修改 `RAG_BASE_URL`。
+If `RAG_CHAT_BASE_URL` is unset, Chat uses `RAG_BASE_URL`. Chat prefers `RAG_CHAT_API_KEY`; if unset, it reuses the original key only when both endpoint URLs are identical. A separate Chat endpoint without a key causes an error; local gateway credentials are not sent to remote services. Do not change `RAG_BASE_URL` just to switch the live LLM.
 
-## 导入与更新
+## Ingestion and Updates
 
 ```bash
 .venv/bin/company-rag ingest \
@@ -93,37 +93,37 @@ CLI、Web 和评测脚本中的查询改写、跨公司证据筛选、回答生�
 .venv/bin/company-rag stats
 ```
 
-导入和向量化分开，可以检查解析结果后再调用模型。更新索引时暂停问答，完成导入和 `embed` 后再启动服务；首版不提供在线索引版本切换。重复导入跳过未变更文件；内容相同的文本共享 embedding。向量批次保存后即可断点续跑。`embed` 自动按网关字符上限拆分请求，最多两个并发请求，并对网关暂时错误进行有限退避重试；完成后自动同步 Qdrant。导入、更新和删除产生的待同步变更也可用 `sync-vectors --batch-size 128` 单独处理，批大小范围为 1–256。如果 Qdrant 暂时不可用，保留已保存的 embedding 缓存，恢复服务后重试同步。
+Ingestion and embedding are separate so you can inspect parsing results before making model calls. Pause Q&A while updating the index, then restart the service after ingestion and `embed` finish; the initial version does not support switching index versions online. Repeated ingestion skips unchanged files, and identical text shares embeddings. Embedding can resume from saved batches. `embed` automatically splits requests to fit the gateway's character limit, allows at most two concurrent requests, and uses bounded retries with backoff for temporary gateway errors. It automatically synchronizes Qdrant when complete. Pending changes from ingestion, updates, and deletions can also be processed separately with `sync-vectors --batch-size 128`; supported batch sizes are 1–256. If Qdrant is temporarily unavailable, keep the saved embedding cache and retry synchronization after the service recovers.
 
-- 归档目录以根 `index.json` 和发布 `meta.json` 为依据，保留正文及附件，排除爬虫审计、索引副本、媒体链接和已知转换副本。
-- 普通目录或单文件也可导入：`company-rag ingest /path/to/reports --company AAPL`。没有可靠元数据时日期为空，不根据文件名猜日期。
-- 公司名称和别名从归档记录或 `meta.json` 的 `company` / `company_name`（字符串）及 `company_aliases`（字符串数组）导入，例如 `{"ticker":"ACME","company":"Acme Corporation","company_aliases":["Acme","艾克米"]}`。自动识别使用这些名称和已导入的 ticker，不内置公司名单，也不猜测简称；缺少别名时可直接输入 ticker 或选择公司。升级前的索引需重新运行原有 `ingest` 命令以载入名称和别名，相同文本仍复用向量缓存。
-- 支持 HTML、TXT、Markdown、PDF、DOCX、PPTX、XLSX、XLS、CSV。Office 表格保留行列和表头；PDF 优先 Poppler 的版式文本提取，没有 Poppler 时使用 pypdf。
-- `--ocr` 为没有文字层的 PDF 页面启用本地 Tesseract 英文识别，需要 `pdftoppm` 和 `tesseract`（本机已安装；新 macOS 可用 `brew install poppler tesseract`）。引用会标注 OCR，识别结果仍需对照原件。增量更新应保留同样的 `--ocr` 选项；切换解析模式会重新解析。
-- `--prune` 同步删除已不在来源中的索引记录。发现元数据读取错误时保留未能确认的旧记录，只允许清理明确排除的副本。
-- `--limit N` 是显式的部分导入，每个根目录最多 N 份文件。正常使用不要设置。
-- 发现或解析来源失败时退出码为 2，成功的文档仍已保存；详细失败、跳过原因和警告位于指定 JSON 报告中。其他运行错误退出码为 1。
+- Archive directories are interpreted using the root `index.json` and release `meta.json` files. Main text and attachments are retained; crawler audits, index copies, media links, and known converted duplicates are excluded.
+- Ordinary directories and individual files can also be ingested: `company-rag ingest /path/to/reports --company AAPL`. Dates remain empty when reliable metadata is unavailable; they are not inferred from filenames.
+- Company names and aliases are imported from archive records or the `company` / `company_name` strings and `company_aliases` string array in `meta.json`, for example `{"ticker":"ACME","company":"Acme Corporation","company_aliases":["Acme","Acme Corp"]}`. Automatic recognition uses these names and imported tickers, with no built-in company list or guessed abbreviations. If aliases are missing, enter a ticker directly or select the company. For indexes created before the upgrade, rerun the original `ingest` command to load names and aliases; identical text still reuses the vector cache.
+- Supported formats are HTML, TXT, Markdown, PDF, DOCX, PPTX, XLSX, XLS, and CSV. Office tables retain rows, columns, and headers. PDF parsing prefers Poppler's layout-preserving text extraction and falls back to pypdf when Poppler is unavailable.
+- `--ocr` enables local Tesseract English recognition for PDF pages without a text layer. It requires `pdftoppm` and `tesseract`, which are already installed on this machine; on a new macOS machine, use `brew install poppler tesseract`. Citations are marked as OCR, and recognized text should still be checked against the original. Keep the same `--ocr` option for incremental updates; changing parsing modes triggers reparsing.
+- `--prune` removes index records that no longer exist in the source. If metadata cannot be read, unverified existing records are retained, and only explicitly excluded duplicates may be removed.
+- `--limit N` explicitly requests partial ingestion, with at most N files per root directory. Leave it unset for normal use.
+- Source discovery or parsing failures produce exit code 2; successfully processed documents are still saved. Detailed failures, skip reasons, and warnings are recorded in the specified JSON report. Other runtime errors produce exit code 1.
 
-原始公司材料只读，不会拷贝进 Git。数据库、向量、运行日志、导入报告均在忽略范围内。
+Original company materials are read-only and are not copied into Git. Databases, vectors, runtime logs, and ingestion reports are all ignored by Git.
 
-## 提问与检索
+## Questions and Search
 
 ```bash
 .venv/bin/company-rag ask 'How did CBRS Q1 2026 GAAP revenue differ from core revenue?' --company CBRS
-.venv/bin/company-rag ask 'NOC 2026 年第二季度销售额与上半年累计销售额分别是多少？' --company NOC --language zh-CN
+.venv/bin/company-rag ask 'What were NOC sales for Q2 2026 and the first half of 2026, respectively?' --company NOC --language zh-CN
 .venv/bin/company-rag search 'Cerebras Q1 2026 GAAP revenue' --company CBRS --mode lexical --no-rewrite
-.venv/bin/company-rag ask '截至 2026-06-23 对第二季度的收入指引是多少？' --company CBRS --date-to 2026-06-23 --language zh-CN
+.venv/bin/company-rag ask 'As of 2026-06-23, what was the revenue guidance for Q2?' --company CBRS --date-to 2026-06-23 --language zh-CN
 ```
 
-`ask` 和 `search` 支持 `--language en`（默认）与 `--language zh-CN`。问题可以使用英语或中文；回答及检索提示使用指定语言，不根据问题语言自动切换。原文摘录、文档标题和来源元数据不翻译。
+`ask` and `search` support `--language en` (the default) and `--language zh-CN`. Questions can be in English or Chinese; answers and search messages use the selected language rather than switching automatically based on the question. Source excerpts, document titles, and source metadata are not translated.
 
-默认使用有限英文检索改写，同时保留原问题。未显式筛选时会按问题中的已知公司名称或代码缩小范围；未识别到才搜索全部公司。跨公司问题应勾选全部目标公司，或重复传入 `--company`；跨指标或跨期间问题会尝试生成至多三条子查询，并将明确指向单一公司的子查询限制在该公司。普通检索默认返回十条证据，限制单份文件占比并去除相同文本。跨公司问答先召回最多 48 条候选，再用同一 Chat 模型选择包含明确单位与期间的证据；这会增加一次模型调用。
+By default, retrieval uses limited English query rewriting while retaining the original question. Without explicit filters, known company names or tickers in the question narrow the scope; all companies are searched only when none are recognized. For cross-company questions, select all target companies or pass `--company` multiple times. For questions spanning metrics or periods, the system attempts to generate up to three subqueries, with subqueries that explicitly refer to one company restricted to that company. Standard retrieval returns ten evidence items by default, limits the share from any one document, and removes identical text. Cross-company Q&A first retrieves up to 48 candidates, then uses the same Chat model to select evidence with explicit units and periods; this adds one model call.
 
-日期筛选指归档给出的**披露/活动/生效日期**，具体含义见每条证据的 `date_basis`，不是财务会计期间。未知日期在严格日期筛选下被排除；这也不等价于完整的历史“当时可得信息”数据库。对于归档未包含的公司，请明确选择公司范围；不要将未检索到解释为事实不存在。
+Date filters refer to the archive's **disclosure/event/effective date**, as indicated by each evidence item's `date_basis`, rather than the financial reporting period. Unknown dates are excluded under strict date filtering. This is not equivalent to a complete historical database of information available at a given point in time. For companies absent from the archive, select the company scope explicitly; a retrieval miss does not establish that a fact does not exist.
 
-回答区域自动渲染 Markdown 标题、加粗、列表、表格、引用块及代码块。答案附 `[S1]` 等引用、逐字原文、文档名、源 URL、页码/表格/幻灯片定位。程序验证引用编号和原文摘录，失败则重试一次，再失败则拒绝展示答案。**摘录存在不代表已经证明每项结论正确**，尤其是金额计算、复杂表格和冲突披露仍需核查。
+The answer area automatically renders Markdown headings, bold text, lists, tables, blockquotes, and code blocks. Answers include citations such as `[S1]`, verbatim excerpts, document names, source URLs, and page/table/slide locations. The application validates citation identifiers and source excerpts, retries once on failure, and refuses to display the answer if validation fails again. **The presence of an excerpt does not prove every conclusion is correct.** Financial calculations, complex tables, and conflicting disclosures still require verification.
 
-API 示例：
+API example:
 
 ```bash
 curl http://127.0.0.1:8000/api/ask \
@@ -131,23 +131,23 @@ curl http://127.0.0.1:8000/api/ask \
   -d '{"question":"What was CBRS Q1 2026 GAAP revenue?","companies":["CBRS"],"mode":"hybrid","rewrite":true,"top_k":10,"language":"en"}'
 ```
 
-`language` 可省略，默认 `en`；设为 `zh-CN` 可获取中文回答与提示。不支持的语言值返回 HTTP 422。响应包含实际使用的 `language`。
+`language` is optional and defaults to `en`; set it to `zh-CN` for Chinese answers and messages. Unsupported language values return HTTP 422. The response includes the actual `language` used.
 
-另有 `GET /api/stats` 和 `GET /api/source/{chunk_id}`。界面和 API 为本机单用户使用设计，不是公网多用户服务。
+`GET /api/stats` and `GET /api/source/{chunk_id}` are also available. The interface and API are designed for local, single-user use, not as a public multi-user service.
 
-## 测试与评测
+## Testing and Evaluation
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python scripts/evaluate.py --generation --output data/evaluation.json
 ```
 
-离线测试使用真实 SQLite 与 Qdrant 客户端内存模式，覆盖检索、过滤、增量更新、embedding 校验、拒答、路径边界和本机 API；实际运行和评测使用 Qdrant 服务。评测脚本在同一小型真实问题集上对比关键词、向量、混合检索的证据 Hit@10 和 MRR，并可运行中文问答与无答案问题。问题集取自两份业绩材料，**不是独立大规模 benchmark**，不能据此宣称财务问答普遍准确。
+Offline tests use real SQLite and the Qdrant client's in-memory mode, covering retrieval, filtering, incremental updates, embedding validation, answer refusal, path boundaries, and the local API. Normal operation and evaluation use the Qdrant service. The evaluation script compares evidence Hit@10 and MRR for keyword, vector, and hybrid retrieval on the same small set of real questions, and can also run Chinese Q&A and unanswerable questions. The question set comes from two earnings documents and is **not an independent, large-scale benchmark**; it does not support claims of general accuracy in financial Q&A.
 
-## 已知边界
+## Known Limitations
 
-- 不读取音视频内容、图片中的所有图表或独立 XML/XBRL；旧 DOC/PPT 和不支持的文件会在报告中列出。XBRL 对应的 HTML 主申报通常已导入。
-- 表格的行列文本并不保证每个复杂合并单元格、跨页表头或脚注均被正确理解。XLSX 读取文件缓存值，不计算缺失的公式结果。
-- 年份、GAAP/non-GAAP、季度/YTD、实际/指引、币种与数量级需要明确区分。模型生成的算术没有独立计算器验证。
-- 向量检索由 Qdrant 使用余弦距离和公司、类别、披露日期过滤；HNSW 为近似检索，排序与原有精确扫描可能不同，迁移后应重跑本地评测。Qdrant 停止时无法进行 dense/hybrid 检索；全文检索和原文仍在 SQLite 中。
-- 本地原件可能包含提示注入；系统把文档当作证据，回答通过禁用原始 HTML、图片及引用式链接的 Markdown 解析器渲染，不执行模型 HTML。原文证据仍按纯文本显示。API 保留原始 `answer`，另返回安全渲染后的 `answer_html`。
+- The system does not read audio/video content or standalone XML/XBRL, and does not extract every chart embedded in images. Legacy DOC/PPT and unsupported files are listed in the report. The main HTML filings associated with XBRL are usually already ingested.
+- Extracting table rows and columns does not guarantee correct interpretation of every complex merged cell, header spanning pages, or footnote. XLSX parsing reads cached values from the file and does not calculate missing formula results.
+- Years, GAAP/non-GAAP, quarter/YTD, actuals/guidance, currencies, and scales must be distinguished explicitly. Model-generated arithmetic is not verified by an independent calculator.
+- Qdrant performs vector retrieval using cosine distance and company, category, and disclosure-date filters. HNSW provides approximate retrieval, so rankings may differ from the previous exact scan; rerun local evaluations after migration. Dense/hybrid retrieval is unavailable when Qdrant is stopped; full-text search and source text remain in SQLite.
+- Local source files may contain prompt injection. The system treats documents as evidence and renders answers through a Markdown parser with raw HTML, images, and reference-style links disabled; model-generated HTML is not executed. Source evidence is still displayed as plain text. The API retains the original `answer` and also returns the safely rendered `answer_html`.
