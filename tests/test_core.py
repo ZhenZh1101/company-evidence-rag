@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+from qdrant_client import QdrantClient
 
 from rag.client import Gateway, parse_json
 from rag.config import Settings
@@ -62,8 +63,10 @@ class StoreAndRAGTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()
-        self.store = Store(self.root / "test.sqlite3")
-        self.addCleanup(self.store.db.close)
+        self.vectors = QdrantClient(':memory:')
+        self.addCleanup(self.vectors.close)
+        self.store = Store(self.root / "test.sqlite3", vector_client=self.vectors)
+        self.addCleanup(self.store.close)
 
     def add(self, key, text, company="NOC", publication_date="2026-07-21", period="2026-Q2", company_aliases=()):
         source = Source(key, company, key, "results", publication_date, period,
@@ -141,7 +144,7 @@ class StoreAndRAGTests(unittest.TestCase):
         self.assertCountEqual(self.store.company_aliases()['ALFA'], ['Acme Group', 'Acme Holdings', 'Acme Renewed', '艾克米'])
         self.assertIsNone(rag.search('Acme Labs revenue', mode='lexical', rewrite=False)['filters']['companies'])
         self.assertEqual(rag.search('Acme Renewed revenue', mode='lexical', rewrite=False)['filters']['companies'], ['ALFA'])
-        with Store(self.root / 'test.sqlite3') as reopened:
+        with Store(self.root / 'test.sqlite3', vector_client=self.vectors) as reopened:
             self.assertEqual(reopened.company_aliases(), self.store.company_aliases())
         with self.store.db:
             self.store.db.execute('DELETE FROM documents WHERE id=?', (sources[0].key,))

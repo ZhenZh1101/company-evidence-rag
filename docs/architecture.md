@@ -6,7 +6,7 @@
 |---|---|---|
 | 完善检索前后处理 | II.B，页 3–4，图 3 | 解析、元数据、混合检索、证据选择 |
 | 保留上下文和元数据 | III.B，页 8 | 公司、披露日期、日期依据、期间、来源、页码；相邻段落分块 |
-| 稀疏与向量互补 | III.D.1，页 9 | SQLite FTS5 BM25 + 归一化向量余弦 + RRF（RRF 是工程选择） |
+| 稀疏与向量互补 | III.D.1，页 9 | SQLite FTS5 BM25 + Qdrant 余弦向量检索 + RRF（RRF 是工程选择） |
 | 控制重复和上下文长度 | IV.A，页 10 | 内容去重、限制单文件占比、有限证据预算 |
 | 关注表格完整性 | III.A.1，页 7 | HTML 表格保留行列；PDF 保留版式、页码；长表重复表头。复杂图表不声称已解决 |
 | 分开评价检索与生成 | VI.B–D，页 12–15 | 检索命中/MRR、证据引用验证、拒答；真实数据 smoke evaluation |
@@ -19,13 +19,17 @@ CBRS 根索引包含 429 条发布记录；NOC 包含 1,560 条。只按最终 `
 
 ## 运行路径
 
-导入 → 文本与定位信息 → SQLite 文档/分块/FTS → 批量向量化并持久保存。
+导入 → 文本与定位信息 → SQLite 文档/分块/FTS → 批量向量化并缓存 → 同步 Qdrant 向量索引。
+
+Qdrant 是免费开源的专用向量数据库，以本地服务运行。SQLite 保留原文、元数据、FTS5 与按文本哈希去重的 embedding 缓存；Qdrant 按分块保存向量及公司、类别、披露日期筛选字段，使用余弦距离检索。每个 SQLite 数据库按绝对路径派生独立 collection，避免不同数据库的 embedding 空间混用。新增、替换、删除形成待同步变更；`embed` 自动同步，`sync-vectors` 可单独迁移已有缓存及重试中断任务，不请求 embedding API、不删除旧缓存。索引更新期间仍需暂停问答，两个数据库之间不提供分布式事务。
+
+部署使用 `docker compose up -d`，仅映射本机 6333 端口，关闭遥测，持久目录为 `data/qdrant/`。升级旧索引、移动 SQLite 路径或重建 Qdrant 后执行 `company-rag sync-vectors`。向量搜索由 Qdrant 的索引与查询规划执行，HNSW 近似召回可能改变原精确扫描的排序，应重新评测；原文与全文检索不依赖 Qdrant 在线。
 
 问题 → 可选有限英文检索改写（保留原问题，使用语料中的公司名称）→ 公司/披露日期过滤及子查询公司路由 → 关键词与向量检索融合 → 多来源证据选择 → 根据证据回答 → 验证引用 ID 和原文摘录。
 
 跨公司比较的实测暴露了精确总量被取整摘要挤出的问题，因此这类问答额外从最多 48 个完整候选片段中，使用同一 Chat 模型选择证据，再生成答案。单公司问答保持较短流程。选择器只能返回已提供的来源编号，不能新增证据；生成仍需逐字引用校验。表格单位必须跟随分块，不能凭模型记忆补全。
 
-模型默认使用本地 OpenClaw 的 Chat 和 embedding HTTP 接口；embedding 的请求体模型为 `openclaw/llm-gpt55`，通过 `x-openclaw-model: openai/text-embedding-3-large` 指定实际模型。也支持两者都使用 OpenAI，以及 OpenAI embedding 搭配 Z.AI Chat。通过独立 Chat 地址、模型、密钥和请求参数切换在线 LLM；仅切换 Chat 不改变索引身份，切换 embedding 地址、请求体模型或实际路由模型需重建向量，禁止复用旧向量。认证从环境或本机 OpenClaw 配置读取，本地网关凭据不会自动转发给远程接口或独立 Chat 地址，密钥不进入 Git。SQLite 与 NumPy 避免另部署数据库；向量扫描适合当前本地规模，数据扩大后可依据实际延迟迁移 ANN。
+模型默认使用本地 OpenClaw 的 Chat 和 embedding HTTP 接口；embedding 的请求体模型为 `openclaw/llm-gpt55`，通过 `x-openclaw-model: openai/text-embedding-3-large` 指定实际模型。也支持两者都使用 OpenAI，以及 OpenAI embedding 搭配 Z.AI Chat。通过独立 Chat 地址、模型、密钥和请求参数切换在线 LLM；仅切换 Chat 不改变索引身份，切换 embedding 地址、请求体模型或实际路由模型需重建向量，禁止复用旧向量。认证从环境或本机 OpenClaw 配置读取，本地网关凭据不会自动转发给远程接口或独立 Chat 地址，密钥不进入 Git。Qdrant 自托管不收取数据库服务费，模型 API 的费用与原配置一致。
 
 ## 质量边界
 
@@ -33,4 +37,4 @@ CBRS 根索引包含 429 条发布记录；NOC 包含 1,560 条。只按最终 `
 
 暂不引入知识图谱、微调、HyDE、无限自主检索或独立重排模型。后续仅根据具体评测错误增加复杂度。
 
-实现参考：[SQLite FTS5 官方说明](https://www.sqlite.org/fts5.html)、[pypdf 文本提取说明](https://pypdf.readthedocs.io/en/stable/user/extract-text.html)。pypdf 不是 OCR，PDF 文字定位不等于可靠恢复所有表格结构。
+实现参考：[Qdrant 本地部署](https://qdrant.tech/documentation/quickstart/)、[Qdrant 配置](https://qdrant.tech/documentation/operations/configuration/)、[SQLite FTS5 官方说明](https://www.sqlite.org/fts5.html)、[pypdf 文本提取说明](https://pypdf.readthedocs.io/en/stable/user/extract-text.html)。pypdf 不是 OCR，PDF 文字定位不等于可靠恢复所有表格结构。

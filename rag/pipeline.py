@@ -87,9 +87,7 @@ class RAG:
         filters = dict(companies=companies, date_from=date_from, date_to=date_to, categories=categories)
         if mode != 'lexical':
             self.store.check_embedding_identity(self.gateway)
-            stats = self.store.stats()
-            if stats['indexed_chunks'] != stats['chunks']:
-                raise ValueError('Embedding index incomplete. Run company-rag embed, or use lexical mode explicitly.')
+            stats = self.store.require_vector_index()
             vectors = self.gateway.embed(queries) if stats['chunks'] else []
         scores = defaultdict(float)
         subrankings = []

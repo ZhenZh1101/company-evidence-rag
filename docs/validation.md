@@ -1,5 +1,15 @@
 # 本机验收记录
 
+## 2026-10-07：接入 Qdrant
+
+默认库 `data/rag.sqlite3` 的 **42,896 个分块向量**已从 SQLite 缓存同步到本地 Qdrant `v1.19.2`，没有重新调用 embedding API。Qdrant 实测 `status=green`、`points_count=indexed_vectors_count=42896`，公司、类别、披露日期的 payload 索引已建立，待同步变更为 0；再次运行 `sync-vectors` 同步 0 条。原库备份为 `data/rag-before-qdrant.sqlite3.bak`，原 embedding 缓存仍保留。扩展库未在本次默认库迁移中同步，使用前需指定其路径运行 `sync-vectors`。
+
+离线测试 **85 项通过**，覆盖旧库迁移、断点重试、删除与分块 ID 复用、筛选前置、不同数据库隔离、向量库丢失/部分缺失及引用哈希不一致后的恢复。部署配置校验通过。
+
+同一 9 题检索 smoke set、关闭查询改写：BM25 命中 8/9、纯向量 9/9、混合 8/9；平均倒数排名分别为 0.586、0.737、0.844，公司/日期过滤违规均为 0。与迁移前 `evaluation-large-20261007.json` 的指标一致；报告保存在 `data/evaluation-qdrant.json`，迁移计数在 `data/qdrant-migration.json`。此结果仅覆盖该小型测试集，不代表一般准确率或 ANN 在所有查询上的召回保证。
+
+Web 服务已切换并通过 `/api/stats` 确认为 Qdrant。启用默认查询改写的 NOC 实际问答返回第二季度 10,876、上半年 20,757 百万美元，并通过原文引用校验；响应保存在 `data/web-smoke-qdrant.json`。另一个关闭改写的英文问法未召回上半年直接证据，返回部分拒答，保存在 `data/web-smoke-qdrant-no-rewrite.json`；这次数据库迁移没有消除问法和检索策略对证据召回的影响。
+
 ## 2026-10-07：切换 text-embedding-3-large
 
 Embedding 现通过本机 OpenClaw 调用：请求体 `model=openclaw/llm-gpt55`，请求头 `x-openclaw-model: openai/text-embedding-3-large`。实测为 3072 维，实际路由模型已加入索引身份校验。Chat 不发送此请求头。

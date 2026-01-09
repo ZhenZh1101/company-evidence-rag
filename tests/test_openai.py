@@ -5,6 +5,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
+from qdrant_client import QdrantClient
 
 from rag.client import Gateway
 from rag.config import Settings
@@ -44,7 +45,9 @@ class OpenAITests(unittest.TestCase):
             source = Source('report', 'NOC', 'Annual results', 'results', '2026-07-21', '2026',
                             'disclosure date', 'local', 'https://example.test/report', root / 'report.txt')
             build.return_value.open.side_effect = [io.BytesIO(json.dumps(reply).encode()) for reply in replies]
-            with Store(root / 'openai.sqlite3') as store:
+            vectors = QdrantClient(':memory:')
+            self.addCleanup(vectors.close)
+            with Store(root / 'openai.sqlite3', vector_client=vectors) as store:
                 store.put(source, root, 'fingerprint', 'content-hash', [Segment(quote, 'paragraph 1')])
                 self.assertEqual(store.embed_pending(gateway), 1)
                 identity = store.meta('embedding_identity')

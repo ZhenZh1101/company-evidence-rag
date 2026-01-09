@@ -40,7 +40,7 @@ def main():
                        'do not validate metric, period, units, semantics, or general accuracy. Review full responses.',
                   created_at=datetime.now(timezone.utc).isoformat(), db=str((args.db or settings.db_path).resolve()),
                   cases=cases, retrieval=[], generation=[])
-    with Store(args.db or settings.db_path) as store:
+    with Store(args.db or settings.db_path, settings.qdrant_url) as store:
         rag = RAG(store, Gateway(settings))
         report['stats'] = store.stats()
         for case in cases:

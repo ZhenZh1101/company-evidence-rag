@@ -20,6 +20,7 @@ class Settings:
     chat_thinking: str | None = None
     chat_token_limit_field: str = 'max_tokens'
     chat_reasoning_effort: str | None = None
+    qdrant_url: str = 'http://127.0.0.1:6333'
 
     @property
     def openclaw_embedding_model(self):
@@ -29,7 +30,9 @@ class Settings:
     def from_env(cls):
         base_url = os.getenv('RAG_BASE_URL', cls.base_url).rstrip('/')
         chat_base_url = os.getenv('RAG_CHAT_BASE_URL', '').rstrip('/')
-        for name, endpoint in (('RAG_BASE_URL', base_url), ('RAG_CHAT_BASE_URL', chat_base_url or base_url)):
+        qdrant_url = os.getenv('RAG_QDRANT_URL', cls.qdrant_url).rstrip('/')
+        for name, endpoint in (('RAG_BASE_URL', base_url), ('RAG_CHAT_BASE_URL', chat_base_url or base_url),
+                               ('RAG_QDRANT_URL', qdrant_url)):
             parsed = urlsplit(endpoint)
             if (parsed.scheme not in ('http', 'https') or not parsed.hostname
                     or parsed.username is not None or parsed.query or parsed.fragment):
@@ -61,4 +64,4 @@ class Settings:
                    timeout=float(os.getenv('RAG_TIMEOUT', '180')), chat_base_url=chat_base_url,
                    chat_api_key=os.getenv('RAG_CHAT_API_KEY'), chat_temperature=temperature,
                    chat_thinking=thinking, chat_token_limit_field=token_limit_field,
-                   chat_reasoning_effort=reasoning_effort)
+                   chat_reasoning_effort=reasoning_effort, qdrant_url=qdrant_url)

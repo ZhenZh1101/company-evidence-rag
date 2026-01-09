@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+from qdrant_client import QdrantClient
 
 from rag.client import Gateway
 from rag.config import Settings
@@ -91,7 +92,9 @@ class EmbeddingConfigurationTests(unittest.TestCase):
                 settings = Settings(api_key='test-token', embedding_openclaw_model=previous_model)
                 old_gateway = Gateway(settings)
                 large_gateway = Gateway(replace(settings, embedding_openclaw_model='openai/text-embedding-3-large'))
-                with Store(root / 'index.sqlite3') as store:
+                client = QdrantClient(':memory:')
+                self.addCleanup(client.close)
+                with Store(root / 'index.sqlite3', vector_client=client) as store:
                     source = Source('report', 'NOC', 'Annual results', 'results', '2026-07-21', '2026',
                                     'disclosure date', 'local', 'https://example.test/report', root / 'report.txt')
                     store.put(source, root, 'fingerprint', 'content-hash', [Segment('Revenue increased.', 'paragraph 1')])

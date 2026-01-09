@@ -20,7 +20,7 @@ def main():
     settings = Settings.from_env()
     cases = json.loads((Path(__file__).resolve().parents[1] / 'tests/golden.json').read_text())
     results = []
-    with Store(settings.db_path) as store:
+    with Store(settings.db_path, settings.qdrant_url) as store:
         rag = RAG(store, Gateway(settings))
         for mode in ('lexical', 'dense', 'hybrid'):
             for case in cases:

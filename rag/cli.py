@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 import warnings
+from qdrant_client.http.exceptions import ApiException
 from .config import Settings
 from .client import Gateway
 from .store import Store, digest
@@ -14,6 +15,33 @@ from .pipeline import RAG
 
 def output(value):
     print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
+
+
+def doctor(settings):
+    from qdrant_client import QdrantClient
+    report = dict(vector_backend='qdrant', errors={})
+    try:
+        client = QdrantClient(url=settings.qdrant_url, timeout=10)
+        try:
+            collections = client.get_collections().collections
+            report['qdrant'] = dict(status='ok', collections=len(collections))
+        finally:
+            client.close()
+    except Exception as exc:
+        report['errors']['qdrant'] = f'{type(exc).__name__}: check RAG_QDRANT_URL and start Qdrant with docker compose up -d.'
+    gateway = Gateway(settings)
+    try:
+        vectors = gateway.embed(['The company revenue increased ten percent.', 'Corporate sales grew by 10%.', 'Bananas are tropical fruit.'])
+        report.update(embedding_dimension=vectors.shape[1], related_cosine=float(vectors[0]@vectors[1]),
+                      unrelated_cosine=float(vectors[0]@vectors[2]))
+    except (ValueError, RuntimeError, OSError) as exc:
+        report['errors']['embedding'] = str(exc)
+    try:
+        report['chat'] = gateway.chat([{'role':'user','content':'Reply with only OK.'}], max_tokens=16)
+    except (ValueError, RuntimeError, OSError) as exc:
+        report['errors']['chat'] = str(exc)
+    output(report)
+    return bool(report['errors'])
 
 
 def ingest(args, store):
@@ -77,7 +105,7 @@ def main():
     parser = argparse.ArgumentParser(description='Evidence-grounded company RAG')
     parser.add_argument('--db', type=Path, help='Override RAG_DB_PATH')
     sub = parser.add_subparsers(dest='command', required=True)
-    sub.add_parser('doctor', help='Verify chat and embedding gateway')
+    sub.add_parser('doctor', help='Verify Qdrant, chat and embedding endpoints independently')
     sub.add_parser('stats')
     load = sub.add_parser('ingest', help='Import archive indexes, folders or individual supported files')
     load.add_argument('paths', nargs='+')
@@ -88,6 +116,8 @@ def main():
     load.add_argument('--report', default='data/ingest-report.json')
     embed = sub.add_parser('embed', help='Resume embedding all pending chunks')
     embed.add_argument('--batch-size', type=int, default=64)
+    sync = sub.add_parser('sync-vectors', help='Copy cached embeddings and pending changes to Qdrant without model calls')
+    sync.add_argument('--batch-size', type=int, default=128)
     for name in ('search','ask'):
         p = sub.add_parser(name)
         p.add_argument('question')
@@ -102,23 +132,20 @@ def main():
     serve = sub.add_parser('serve', help='Serve local web UI and API')
     serve.add_argument('--port', type=int, default=8000)
     args = parser.parse_args()
-    settings = Settings.from_env()
-    if args.db:
-        settings = replace(settings, db_path=args.db)
-    gateway = Gateway(settings)
     try:
+        settings = Settings.from_env()
+        if args.db:
+            settings = replace(settings, db_path=args.db)
         if args.command == 'serve':
             import uvicorn
             from .web import create_app
             uvicorn.run(create_app(settings), host='127.0.0.1', port=args.port)
             return
         if args.command == 'doctor':
-            vectors = gateway.embed(['The company revenue increased ten percent.', 'Corporate sales grew by 10%.', 'Bananas are tropical fruit.'])
-            output(dict(chat=gateway.chat([{'role':'user','content':'Reply with only OK.'}], max_tokens=16),
-                        embedding_dimension=vectors.shape[1], related_cosine=float(vectors[0]@vectors[1]),
-                        unrelated_cosine=float(vectors[0]@vectors[2])))
+            if doctor(settings):
+                sys.exit(1)
             return
-        with Store(settings.db_path) as store:
+        with Store(settings.db_path, settings.qdrant_url) as store:
             if args.command == 'stats':
                 output(store.stats())
             elif args.command == 'ingest':
@@ -129,12 +156,20 @@ def main():
             elif args.command == 'embed':
                 if not 1 <= args.batch_size <= 256:
                     raise ValueError('--batch-size must be 1–256')
-                count = store.embed_pending(gateway, args.batch_size, lambda n: print(f'Embedded {n} new unique chunks', file=sys.stderr, flush=True))
+                count = store.embed_pending(Gateway(settings), args.batch_size, lambda n: print(f'Embedded {n} new unique chunks', file=sys.stderr, flush=True))
                 output(dict(new_vectors=count, **store.stats()))
+            elif args.command == 'sync-vectors':
+                if not 1 <= args.batch_size <= 256:
+                    raise ValueError('--batch-size must be 1–256')
+                count = store.sync_vectors(args.batch_size, lambda n: print(f'Synced {n} vector changes to Qdrant', file=sys.stderr, flush=True))
+                output(dict(synced_vectors=count, **store.stats()))
             else:
                 options = {k:getattr(args,k) for k in ('companies','categories','date_from','date_to','top_k','mode','language')}
                 options['rewrite'] = not args.no_rewrite
-                output(getattr(RAG(store,gateway),args.command)(args.question, **options))
+                output(getattr(RAG(store,Gateway(settings)),args.command)(args.question, **options))
+    except ApiException as exc:
+        print(f'Error: Qdrant request failed ({type(exc).__name__}). Check RAG_QDRANT_URL and start Qdrant with docker compose up -d.', file=sys.stderr)
+        sys.exit(1)
     except (ValueError, RuntimeError, OSError) as exc:
         print(f'Error: {exc}', file=sys.stderr)
         sys.exit(1)

@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, Field, field_validator, model_validator
+from qdrant_client.http.exceptions import ApiException
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .client import Gateway
@@ -30,6 +31,10 @@ ZH_MESSAGES = {
     'Invalid chunk ID.': '无效的片段编号。',
     'Source passage not found.': '未找到该原文片段。',
     'Embedding index incomplete. Run company-rag embed, or use lexical mode explicitly.': '向量索引不完整。请运行 company-rag embed，或选择关键词检索模式。',
+    'Qdrant request failed. Check the vector database service and RAG_QDRANT_URL.': '向量数据库请求失败，请检查 Qdrant 服务和 RAG_QDRANT_URL 配置。',
+    'Qdrant index is missing. Run company-rag sync-vectors to restore cached vectors.': 'Qdrant 索引不存在，请运行 company-rag sync-vectors 恢复缓存向量。',
+    'Qdrant index is incomplete. Run company-rag sync-vectors to restore cached vectors.': 'Qdrant 索引不完整，请运行 company-rag sync-vectors 恢复缓存向量。',
+    'Qdrant source mismatch. Run company-rag sync-vectors before searching.': 'Qdrant 索引与原文不一致，请先运行 company-rag sync-vectors 再检索。',
     'Not Found': '未找到该接口。',
     'Method Not Allowed': '不支持此请求方法。',
 }
@@ -167,7 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/stats")
     def stats():
         try:
-            with Store(settings.db_path) as store:
+            with Store(settings.db_path, settings.qdrant_url) as store:
                 return store.stats()
         except Exception as exc:
             logger.error("Index status failed (%s)", type(exc).__name__)
@@ -177,7 +182,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def ask(payload: AskRequest, request: Request):
         request.state.language = payload.language
         try:
-            with Store(settings.db_path) as store:
+            with Store(settings.db_path, settings.qdrant_url) as store:
                 result = RAG(store, gateway).ask(
                     question=payload.question,
                     companies=payload.companies,
@@ -193,6 +198,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return result
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
+        except ApiException as exc:
+            logger.error("Vector database request failed (%s)", type(exc).__name__)
+            raise HTTPException(503, 'Qdrant request failed. Check the vector database service and RAG_QDRANT_URL.') from None
         except Exception as exc:
             # Upstream exception bodies may contain configuration or request data.
             logger.error("Question answering failed (%s)", type(exc).__name__)
@@ -204,7 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def source(chunk_id: str):
         if len(chunk_id) > 160:
             raise HTTPException(422, 'Invalid chunk ID.')
-        with Store(settings.db_path) as store:
+        with Store(settings.db_path, settings.qdrant_url) as store:
             result = store.source(chunk_id)
         if result is None:
             raise HTTPException(404, 'Source passage not found.')

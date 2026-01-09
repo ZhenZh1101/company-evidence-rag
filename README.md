@@ -1,30 +1,38 @@
 # 上市公司文档 RAG
 
-本地运行的 **Advanced RAG**：归档感知的文档导入、BM25 + 向量混合检索、公司与披露日期筛选、英语/简体中文界面和问答、可核查的原文引用。默认语言为英语。方案依据和取舍见 [架构说明](docs/architecture.md)，参考论文为目录内 `2312.10997v5.pdf`。
+本地运行的 **Advanced RAG**：归档感知的文档导入、BM25 + 向量混合检索、公司与披露日期筛选、英语/简体中文界面和问答、可核查的原文引用。向量检索使用免费开源、自托管的 [Qdrant](https://github.com/qdrant/qdrant)，不需要云服务账户；SQLite 保留文档、全文索引和 embedding 缓存。默认语言为英语。方案依据和取舍见 [架构说明](docs/architecture.md)，参考论文为目录内 `2312.10997v5.pdf`。
 
 ## 启动
 
-当前工作目录已配置 `.venv`。在本目录运行：
+当前工作目录已配置 `.venv`。先启动 Docker，再在本目录运行：
 
 ```bash
+.venv/bin/python -m pip install -e '.[test]'
+docker compose up -d
+.venv/bin/company-rag sync-vectors
 .venv/bin/company-rag serve
 ```
 
+`sync-vectors` 将已有 SQLite embedding 缓存同步到 Qdrant，不调用模型、不产生重新向量化费用，可以中断后重跑；未向量化的分块仍需执行 `embed`。升级时先停止已有问答服务，完成同步后重启。Qdrant 使用固定版本镜像，数据保存在 `data/qdrant/`，默认仅监听本机 `127.0.0.1:6333`，关闭遥测；启动方法参考 [Qdrant 官方文档](https://qdrant.tech/documentation/quickstart/)。数据库软件免费，原有模型 API 的计费方式不变。
+
 打开 <http://127.0.0.1:8000>。界面初次打开默认使用英语，可通过 Language 切换英语和简体中文，并在浏览器中记住选择；所选语言同时控制新回答的语言，原文引用保持来源语言。服务仅监听本机；端口可通过 `--port 8001` 修改。
 
-新机器需要 Python 3.11 或更高版本：
+新机器需要 Python 3.11 或更高版本，以及运行中的 Docker 和 Compose：
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'
+docker compose up -d
 .venv/bin/company-rag doctor
 ```
+
+`doctor` 分别检查 Qdrant、embedding 和 Chat，某个端点失败时仍报告其他检查的结果；它会调用模型。只检查 Qdrant 是否就绪可运行 `curl --fail http://127.0.0.1:6333/readyz`。
 
 Chat 和 embedding 默认都使用 `http://127.0.0.1:18789/v1`，请求体的 `model` 为 `openclaw/llm-gpt55`。Embedding 额外发送 `x-openclaw-model: openai/text-embedding-3-large`，文档和问题均使用此模型；Chat 不发送该请求头。优先读取环境变量 `RAG_API_KEY`，否则仅对本机地址读取 `~/.openclaw/openclaw.json` 的 `gateway.auth.token`。密钥不会写入数据库、日志或 Git。
 
 `RAG_EMBEDDING_OPENCLAW_MODEL` 控制上述 embedding 请求头，仅在 `RAG_EMBEDDING_MODEL` 以 `openclaw/` 开头时生效；显式设为空字符串时使用网关默认路由。实际路由模型也计入索引身份，切换后必须重新向量化，程序会拒绝混用旧向量。
 
-可用环境变量列在 [.env.example](.env.example)；需要自行 `export`，程序不执行 `.env` 文件。`RAG_DB_PATH` 默认 `data/rag.sqlite3`，CLI 全局 `--db` 可覆盖。切换 embedding endpoint/model 需要新数据库；不要混用向量空间。同名模型在服务端被替换时，程序无法自动识别，需重新构建数据库。
+可用环境变量列在 [.env.example](.env.example)；需要自行 `export`，程序不执行 `.env` 文件。`RAG_DB_PATH` 默认 `data/rag.sqlite3`，CLI 全局 `--db` 可覆盖；`RAG_QDRANT_URL` 默认 `http://127.0.0.1:6333`。每个 SQLite 数据库按绝对路径派生独立 Qdrant collection；移动数据库路径或使用新的 Qdrant 实例后，重新执行 `sync-vectors`。保留 SQLite 缓存可重建向量索引，迁移不会删除原向量。切换 embedding endpoint/model 需要新数据库；不要混用向量空间。同名模型在服务端被替换时，程序无法自动识别，需重新构建数据库。
 
 ### Embedding 和 Chat 都使用 OpenAI
 
@@ -85,7 +93,7 @@ CLI、Web 和评测脚本中的查询改写、跨公司证据筛选、回答生�
 .venv/bin/company-rag stats
 ```
 
-导入和向量化分开，可以检查解析结果后再调用模型。更新索引时暂停问答，完成导入和 `embed` 后再启动服务；首版不提供在线索引版本切换。重复导入跳过未变更文件；内容相同的文本共享 embedding。向量批次保存后即可断点续跑。`embed` 自动按网关字符上限拆分请求，最多两个并发请求，并对网关暂时错误进行有限退避重试。
+导入和向量化分开，可以检查解析结果后再调用模型。更新索引时暂停问答，完成导入和 `embed` 后再启动服务；首版不提供在线索引版本切换。重复导入跳过未变更文件；内容相同的文本共享 embedding。向量批次保存后即可断点续跑。`embed` 自动按网关字符上限拆分请求，最多两个并发请求，并对网关暂时错误进行有限退避重试；完成后自动同步 Qdrant。导入、更新和删除产生的待同步变更也可用 `sync-vectors --batch-size 128` 单独处理，批大小范围为 1–256。如果 Qdrant 暂时不可用，保留已保存的 embedding 缓存，恢复服务后重试同步。
 
 - 归档目录以根 `index.json` 和发布 `meta.json` 为依据，保留正文及附件，排除爬虫审计、索引副本、媒体链接和已知转换副本。
 - 普通目录或单文件也可导入：`company-rag ingest /path/to/reports --company AAPL`。没有可靠元数据时日期为空，不根据文件名猜日期。
@@ -134,12 +142,12 @@ curl http://127.0.0.1:8000/api/ask \
 .venv/bin/python scripts/evaluate.py --generation --output data/evaluation.json
 ```
 
-离线测试覆盖真实 SQLite 检索、过滤、增量更新、embedding 校验、拒答、路径边界和本机 API。评测脚本在同一小型真实问题集上对比关键词、向量、混合检索的证据 Hit@10 和 MRR，并可运行中文问答与无答案问题。问题集取自两份业绩材料，**不是独立大规模 benchmark**，不能据此宣称财务问答普遍准确。
+离线测试使用真实 SQLite 与 Qdrant 客户端内存模式，覆盖检索、过滤、增量更新、embedding 校验、拒答、路径边界和本机 API；实际运行和评测使用 Qdrant 服务。评测脚本在同一小型真实问题集上对比关键词、向量、混合检索的证据 Hit@10 和 MRR，并可运行中文问答与无答案问题。问题集取自两份业绩材料，**不是独立大规模 benchmark**，不能据此宣称财务问答普遍准确。
 
 ## 已知边界
 
 - 不读取音视频内容、图片中的所有图表或独立 XML/XBRL；旧 DOC/PPT 和不支持的文件会在报告中列出。XBRL 对应的 HTML 主申报通常已导入。
 - 表格的行列文本并不保证每个复杂合并单元格、跨页表头或脚注均被正确理解。XLSX 读取文件缓存值，不计算缺失的公式结果。
 - 年份、GAAP/non-GAAP、季度/YTD、实际/指引、币种与数量级需要明确区分。模型生成的算术没有独立计算器验证。
-- 向量采用分批精确扫描，内存受批大小限制；扩大公司数量后，应根据实际延迟决定是否迁移 ANN。
+- 向量检索由 Qdrant 使用余弦距离和公司、类别、披露日期过滤；HNSW 为近似检索，排序与原有精确扫描可能不同，迁移后应重跑本地评测。Qdrant 停止时无法进行 dense/hybrid 检索；全文检索和原文仍在 SQLite 中。
 - 本地原件可能包含提示注入；系统把文档当作证据，回答通过禁用原始 HTML、图片及引用式链接的 Markdown 解析器渲染，不执行模型 HTML。原文证据仍按纯文本显示。API 保留原始 `answer`，另返回安全渲染后的 `answer_html`。
