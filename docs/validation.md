@@ -1,87 +1,87 @@
-# 本机验收记录
+# Local Acceptance Records
 
-## 2026-10-07：接入 Qdrant
+## 2026-10-07: Qdrant Integration
 
-默认库 `data/rag.sqlite3` 的 **42,896 个分块向量**已从 SQLite 缓存同步到本地 Qdrant `v1.19.2`，没有重新调用 embedding API。Qdrant 实测 `status=green`、`points_count=indexed_vectors_count=42896`，公司、类别、披露日期的 payload 索引已建立，待同步变更为 0；再次运行 `sync-vectors` 同步 0 条。原库备份为 `data/rag-before-qdrant.sqlite3.bak`，原 embedding 缓存仍保留。扩展库未在本次默认库迁移中同步，使用前需指定其路径运行 `sync-vectors`。
+The **42,896 chunk vectors** in the default database, `data/rag.sqlite3`, have been synchronized from the SQLite cache to local Qdrant `v1.19.2` without calling the embedding API again. Qdrant reported `status=green` and `points_count=indexed_vectors_count=42896`. Payload indexes for company, category, and disclosure date have been created, and there are 0 pending changes to synchronize; running `sync-vectors` again synchronized 0 records. The original database was backed up to `data/rag-before-qdrant.sqlite3.bak`, and the original embedding cache is still retained. The expansion database was not synchronized as part of this default-database migration; run `sync-vectors` with its path before using it.
 
-离线测试 **85 项通过**，覆盖旧库迁移、断点重试、删除与分块 ID 复用、筛选前置、不同数据库隔离、向量库丢失/部分缺失及引用哈希不一致后的恢复。部署配置校验通过。
+**85 offline tests passed**, covering migration of existing databases, resumable retries, deletion and chunk ID reuse, pre-filtering, isolation between databases, and recovery after vector-store loss, partially missing vectors, or reference hash mismatches. Deployment configuration validation passed.
 
-同一 9 题检索 smoke set、关闭查询改写：BM25 命中 8/9、纯向量 9/9、混合 8/9；平均倒数排名分别为 0.586、0.737、0.844，公司/日期过滤违规均为 0。与迁移前 `evaluation-large-20261007.json` 的指标一致；报告保存在 `data/evaluation-qdrant.json`，迁移计数在 `data/qdrant-migration.json`。此结果仅覆盖该小型测试集，不代表一般准确率或 ANN 在所有查询上的召回保证。
+Using the same 9-question retrieval smoke set with query rewriting disabled: BM25 hit 8/9, vector-only retrieval 9/9, and hybrid retrieval 8/9; mean reciprocal ranks were 0.586, 0.737, and 0.844, respectively, with 0 company/date filter violations. These metrics match the pre-migration results in `evaluation-large-20261007.json`; the report is saved in `data/evaluation-qdrant.json`, and migration counts are in `data/qdrant-migration.json`. These results cover only this small test set and do not establish general accuracy or guarantee ANN recall across all queries.
 
-Web 服务已切换并通过 `/api/stats` 确认为 Qdrant。启用默认查询改写的 NOC 实际问答返回第二季度 10,876、上半年 20,757 百万美元，并通过原文引用校验；响应保存在 `data/web-smoke-qdrant.json`。另一个关闭改写的英文问法未召回上半年直接证据，返回部分拒答，保存在 `data/web-smoke-qdrant-no-rewrite.json`；这次数据库迁移没有消除问法和检索策略对证据召回的影响。
+The web service has switched to Qdrant, as confirmed through `/api/stats`. An actual NOC question answered with default query rewriting enabled returned sales of 10,876 million USD for the second quarter and 20,757 million USD for the first half, and passed source-quotation validation; the response is saved in `data/web-smoke-qdrant.json`. A different English phrasing with rewriting disabled did not retrieve direct evidence for the first half and produced a partial refusal, saved in `data/web-smoke-qdrant-no-rewrite.json`; this database migration did not eliminate the effects of question phrasing and retrieval strategy on evidence recall.
 
-## 2026-10-07：切换 text-embedding-3-large
+## 2026-10-07: Switch to text-embedding-3-large
 
-Embedding 现通过本机 OpenClaw 调用：请求体 `model=openclaw/llm-gpt55`，请求头 `x-openclaw-model: openai/text-embedding-3-large`。实测为 3072 维，实际路由模型已加入索引身份校验。Chat 不发送此请求头。
+Embeddings are now requested through local OpenClaw: the request body uses `model=openclaw/llm-gpt55`, and the request header is `x-openclaw-model: openai/text-embedding-3-large`. The measured dimension is 3072, and the actual routed model has been added to index identity validation. Chat requests do not send this header.
 
-两个数据库已在副本上重建并切换到原路径，旧库快照及切换前的原文件保留在 `data/backups/`；路径、计数和校验摘要见 `data/large-rebuild-20261007.json`。
+Both databases were rebuilt in copies and moved back to their original paths. Snapshots of the old databases and the original files from before the switch are retained in `data/backups/`; paths, counts, and validation summaries are recorded in `data/large-rebuild-20261007.json`.
 
-| 数据库 | 文档 | 分块 | 有效唯一向量 | 维度 |
+| Database | Documents | Chunks | Valid unique vectors | Dimensions |
 |---|---:|---:|---:|---:|
 | `data/rag.sqlite3` | 3,549 | 42,896 | 34,786 | 3,072 |
 | `data/expansion-20261007.sqlite3` | 9,605 | 210,703 | 135,270 | 3,072 |
 
-两库所有分块均有向量，`quick_check` 均为 `ok`；全部文档和分块内容的 SHA-256 摘要与旧库备份一致，原文向量检索检查通过。扩展库复用了主库已经生成的 large 向量，没有混入旧模型向量。网页服务已重启，在线索引身份已确认包含 `openai/text-embedding-3-large`。
+Every chunk in both databases has a vector, and both databases returned `ok` from `quick_check`. SHA-256 hashes of all document and chunk contents match the old database backups, and vector retrieval checks using source text passed. The expansion database reused large-model vectors already generated for the main database, without mixing in vectors from the old model. The web service has been restarted, and the active index identity has been confirmed to include `openai/text-embedding-3-large`.
 
-离线测试 **71 项通过**，新增覆盖实际请求体和路由头、Chat/直连接口隔离、环境变量覆盖，以及旧索引拒绝复用。现有 9 题检索 smoke set 的结果如下，关闭查询改写，无公司或日期过滤违规：
+**71 offline tests passed**, with new coverage for the actual request body and routing header, isolation of Chat and direct API calls, environment variable overrides, and rejection of old-index reuse. Results for the existing 9-question retrieval smoke set are below, with query rewriting disabled and no company or date filter violations:
 
-| 方法 | 全部目标命中 @10 | 平均倒数排名 |
+| Method | All targets hit @10 | Mean reciprocal rank |
 |---|---:|---:|
-| 关键词 BM25 | 8/9 | 0.586 |
-| 纯向量 | 9/9 | 0.737 |
-| 混合检索 | 8/9 | 0.844 |
+| Keyword BM25 | 8/9 | 0.586 |
+| Vector-only | 9/9 | 0.737 |
+| Hybrid retrieval | 8/9 | 0.844 |
 
-报告位于 `data/evaluation-large-20261007.json`。重启后的 Web 实际问答也已通过：NOC 2026 年第二季度与上半年销售额分别返回 10,876 和 20,757 百万美元，附原文引用且无警告；响应保存在 `data/web-smoke-large-20261007.json`。这仍是小型、手工选取的检索与问答检查，不能据此推断一般财务问答准确率。以下各节保留迁移前 1536 维 embedding 的历史验收结果。
+The report is in `data/evaluation-large-20261007.json`. An actual web question also passed after the restart: NOC sales for the second quarter and first half of 2026 were returned as 10,876 and 20,757 million USD, respectively, with source quotations and no warnings; the response is saved in `data/web-smoke-large-20261007.json`. These remain small, manually selected retrieval and question-answering checks and cannot establish general financial question-answering accuracy. The sections below retain the historical acceptance results from before the migration, using 1536-dimensional embeddings.
 
-## 实际数据与接口
+## Actual Data and APIs
 
-已处理用户提供的 CBRS 与 NOC 两个归档，原始目录未修改。使用指定的本机 Chat / embedding 接口和 `openclaw/llm-gpt55`；embedding 实测为 1536 维，已检验有限值、非零向量、维度与索引一致性。
+The two user-provided CBRS and NOC archives have been processed without modifying their source directories. The specified local Chat / embedding APIs and `openclaw/llm-gpt55` were used; embeddings were measured at 1536 dimensions and checked for finite values, nonzero vectors, and dimensional consistency with the index.
 
-| 公司 | 已导入文件 | 文本片段 |
+| Company | Imported files | Text chunks |
 |---|---:|---:|
 | CBRS | 674 | 14,861 |
 | NOC | 2,875 | 28,035 |
-| 合计 | **3,549** | **42,896** |
+| Total | **3,549** | **42,896** |
 
-42,896 个片段均已有向量，相同文本共享 34,786 个有效向量。SQLite `quick_check` 为 `ok`，FTS 记录数与片段数一致。文件数量不是独立发布数量，多个附件或不同格式可以属于同一发布。
+All 42,896 chunks have vectors, with identical text sharing 34,786 valid vectors. SQLite `quick_check` returned `ok`, and the FTS record count matches the chunk count. The file count is not the count of distinct releases: multiple attachments or formats can belong to the same release.
 
-49 份没有文字层的 PDF 经本地 OCR 后可提取文本，共 180 页使用英文 OCR。OCR 和其他部分空白页/图片页警告保留于 `data/ingest-report-ocr.json`，不能据此宣称所有图片内容都已识别。最终导入报告 `data/ingest-report-final.json` 的解析失败数为 0，但有 **1 个原始归档已登记的缺失 RTF 附件**：NOC 2026-02-17 Form 144 的 `0001959173-26-001026.rtf`。这一发现错误使导入命令返回 2，成功的索引仍已保存。
+Text became extractable from 49 PDFs without a text layer after local OCR, with English OCR applied to 180 pages in total. OCR warnings and other warnings about partially blank or image-only pages are retained in `data/ingest-report-ocr.json`; this does not establish that all image content has been recognized. The final ingestion report, `data/ingest-report-final.json`, records 0 parsing failures, but there is **1 missing RTF attachment listed in the original archive**: `0001959173-26-001026.rtf` for NOC's 2026-02-17 Form 144. This discovery error caused the ingestion command to return 2, while the successfully built index was still saved.
 
-已排除历史清单、目录副本、被错误赋予报告日期的 IR 首页，以及隐藏 iXBRL 技术字段。表格外的金额单位说明保留到表格分块中，整列为空的 HTML 排版列已移除；没有根据模型记忆补全单位。
+Historical manifests, copies of directory listings, IR homepages incorrectly assigned report dates, and hidden iXBRL technical fields have been excluded. Notes specifying monetary units outside tables are retained in table chunks, and entirely empty HTML layout columns have been removed; units were not filled in from model memory.
 
-## 离线测试
+## Offline Tests
 
-`python -m unittest discover -s tests -q`：**38 项通过**。
+`python -m unittest discover -s tests -q`: **38 passed**.
 
-覆盖归档清单、路径边界、HTML/PDF/OCR 与表格结构、隐藏 iXBRL、单位说明与表格边界、增量更新和 FTS 清理、发现错误时安全保留索引、向量拆批/顺序/维度、公司/日期过滤、跨公司子查询路由、证据选择、逐字引用校验、拒答、凭据隔离和本机 API 访问保护。
+Coverage includes archive manifests, path boundaries, HTML/PDF/OCR and table structure, hidden iXBRL, unit notes and table boundaries, incremental updates and FTS cleanup, safe preservation of the index when discovery errors occur, vector batching/order/dimensions, company/date filters, cross-company subquery routing, evidence selection, verbatim quotation validation, refusal to answer, credential isolation, and local API access protection.
 
-## 检索对照
+## Retrieval Comparison
 
-使用 `tests/golden.json` 中的 9 个手工问题，关闭查询改写；每种检索方式返回 10 个片段。命中要求每个指定证据目标的数字出现在对应公司的文本中。多目标问题的倒数排名取各目标平均。
+The 9 manually written questions in `tests/golden.json` were used with query rewriting disabled; each retrieval method returned 10 chunks. A hit requires the number for every specified evidence target to appear in text from the corresponding company. For questions with multiple targets, reciprocal rank is averaged across targets.
 
-| 方法 | 全部目标命中 @10 | 平均倒数排名 | 公司/日期过滤违规 |
+| Method | All targets hit @10 | Mean reciprocal rank | Company/date filter violations |
 |---|---:|---:|---:|
-| 关键词 BM25 | 8/9 | 0.586 | 0 |
-| 纯向量 | 7/9 | 0.402 | 0 |
-| 混合检索 | 8/9 | 0.602 | 0 |
+| Keyword BM25 | 8/9 | 0.586 | 0 |
+| Vector-only | 7/9 | 0.402 | 0 |
+| Hybrid retrieval | 8/9 | 0.602 | 0 |
 
-这个样本不能证明混合检索普遍优于关键词。关闭改写的跨公司题仍未找齐精确证据，这是保留在报告中的失败；实际问答额外启用子查询路由，以及跨公司候选证据选择。
+This sample does not demonstrate that hybrid retrieval generally outperforms keyword retrieval. With rewriting disabled, the cross-company question still failed to retrieve all the exact evidence; this failure is retained in the report. Actual question answering additionally enables subquery routing and cross-company candidate evidence selection.
 
-## 真实中文问答复核
+## Review of Actual Chinese-Language Questions and Answers
 
-最终完整流程的四个回答已对照本地原文检查，引用均通过程序逐字匹配：
+Four answers from the final complete workflow were checked against the local source documents, and all quotations passed programmatic verbatim matching:
 
-| 问题 | 最终结果 | 本机耗时 |
+| Question | Final result | Local elapsed time |
 |---|---|---:|
-| CBRS Q1 2026 GAAP 与 Core 收入 | 193,406 / 191,348 千美元；正确区分非 GAAP 与原始单位 | 12.39 秒 |
-| NOC Q2 与上半年销售额 | 10,876 / 20,757 百万美元；正确区分三个月与六个月 | 12.00 秒 |
-| CBRS Q1 与 NOC Q2 跨公司列示 | 193.406 / 10,876 百万美元；注明期间不同 | 18.46 秒 |
-| CBRS Q4 2028 已实现经审计收入 | 明确证据不足；未编造未来季度收入 | 15.43 秒 |
+| CBRS Q1 2026 GAAP and Core revenue | 193,406 / 191,348 thousand USD; correctly distinguished non-GAAP figures and original units | 12.39 seconds |
+| NOC Q2 and first-half sales | 10,876 / 20,757 million USD; correctly distinguished three months from six months | 12.00 seconds |
+| Cross-company comparison of CBRS Q1 and NOC Q2 | 193.406 / 10,876 million USD; noted the different reporting periods | 18.46 seconds |
+| CBRS Q4 2028 actual audited revenue | Explicitly stated that evidence was insufficient; did not invent future-quarter revenue | 15.43 seconds |
 
-CBRS 新闻稿的 193.4 / 191.3 百万美元是取整展示，调节表列示更精确的 193,406 / 191,348 千美元，二者不是冲突。
+The 193.4 / 191.3 million USD figures in the CBRS press release are rounded, while the reconciliation table provides the more precise figures of 193,406 / 191,348 thousand USD; these do not conflict.
 
-完整模型输出、证据、查询与耗时位于被 Git 忽略的 `data/acceptance.json`。网页已在本机启动，显示“本地索引就绪”；交互、窄屏、文本安全展示及 API 请求验证也已检查。
+Full model outputs, evidence, queries, and timings are in the Git-ignored `data/acceptance.json`. The web application has been started locally and displays "Local index ready"; interactions, narrow-screen layout, safe text rendering, and API request validation have also been checked.
 
-## 适用边界
+## Limitations
 
-本次是两份业绩材料衍生的小型 smoke set，曾用于定位和修复问题，不是独立留出的测试集。上述四次成功也不保证重复调用或所有新问题均正确。引用匹配只证明原文存在，无法自动证明每项主张都受到支持。OCR、复杂跨页表格、不同财务口径和模型计算仍需人工核对；日期过滤依据归档的披露/活动/生效日，不等同于完整的历史可得信息验证。更新索引时应暂停问答，当前版本没有在线索引版本切换。
+This was a small smoke set derived from two earnings materials, previously used to identify and fix issues, rather than an independently held-out test set. The four successful runs above do not guarantee correctness on repeated calls or all new questions. Quotation matching only proves that the quoted text exists in the source; it cannot automatically establish that every claim is supported. OCR, complex tables spanning multiple pages, differing financial definitions, and model calculations still require human review. Date filtering uses the archive's disclosure/event/effective dates and is not equivalent to full verification of the information available at a historical point in time. Pause question answering while updating the index; the current version does not support switching index versions while the service is online.

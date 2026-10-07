@@ -1,0 +1,11 @@
+*
+!Dockerfile
+!pyproject.toml
+!rag/
+!rag/**
+**/__pycache__
+**/*.pyc
+**/.DS_Store
+**/*.sqlite3-wal
+**/*.sqlite3-shm
+**/*.partial

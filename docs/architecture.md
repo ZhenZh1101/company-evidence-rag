@@ -1,40 +1,40 @@
-# 方案选择与边界
+# Design Choices and Boundaries
 
-以 [arXiv 参考论文](https://arxiv.org/abs/2312.10997v5)（2024-03-27）为依据，选择 **Advanced RAG**。论文是方法综述，不是这两组数据上最优方案的实验证明；效果必须由本地评测检验。
+**Advanced RAG** was selected based on the [reference paper on arXiv](https://arxiv.org/abs/2312.10997v5) (2024-03-27). The paper surveys methods; it does not provide experimental evidence that this is the best approach for these two datasets. Performance must be assessed through local evaluation.
 
-| 决策 | 论文依据 | 本项目实现方向 |
+| Decision | Paper reference | Implementation in this project |
 |---|---|---|
-| 完善检索前后处理 | II.B，页 3–4，图 3 | 解析、元数据、混合检索、证据选择 |
-| 保留上下文和元数据 | III.B，页 8 | 公司、披露日期、日期依据、期间、来源、页码；相邻段落分块 |
-| 稀疏与向量互补 | III.D.1，页 9 | SQLite FTS5 BM25 + Qdrant 余弦向量检索 + RRF（RRF 是工程选择） |
-| 控制重复和上下文长度 | IV.A，页 10 | 内容去重、限制单文件占比、有限证据预算 |
-| 关注表格完整性 | III.A.1，页 7 | HTML 表格保留行列；PDF 保留版式、页码；长表重复表头。复杂图表不声称已解决 |
-| 分开评价检索与生成 | VI.B–D，页 12–15 | 检索命中/MRR、证据引用验证、拒答；真实数据 smoke evaluation |
+| Improve processing before and after retrieval | II.B, pp. 3–4, Fig. 3 | Parsing, metadata, hybrid retrieval, evidence selection |
+| Preserve context and metadata | III.B, p. 8 | Company, disclosure date, date basis, reporting period, source, page number; chunking adjacent paragraphs together |
+| Combine sparse and vector retrieval | III.D.1, p. 9 | SQLite FTS5 BM25 + Qdrant cosine vector retrieval + RRF (RRF is an engineering choice) |
+| Control duplication and context length | IV.A, p. 10 | Content deduplication, limits on the share of evidence from any one file, bounded evidence budgets |
+| Preserve table integrity | III.A.1, p. 7 | Preserve HTML table rows and columns, PDF layout and page numbers, and repeated headers for long tables. No claim is made that complex charts and tables are fully handled |
+| Evaluate retrieval and generation separately | VI.B–D, pp. 12–15 | Retrieval hits/MRR, evidence citation validation, answer refusal; smoke evaluation on real data |
 
-## 数据事实
+## Dataset Facts
 
-CBRS 根索引包含 429 条发布记录；NOC 包含 1,560 条。只按最终 `index.json` 和各发布 `meta.json` 导入，不将 `audit/`、爬虫脚本、流媒体链接、索引页面当作公司正文。保留附件，因为业绩页面可能只是目录，真实业绩在 PDF 内。SEC 完整 submission TXT 含二进制编码及重复材料，优先实际 HTML 申报与附件。
+The CBRS root index contains 429 release records; NOC contains 1,560. Ingestion uses only the final `index.json` and each release's `meta.json`. It does not treat `audit/`, crawler scripts, streaming links, or index pages as company document content. Attachments are retained because an earnings page may only list links, with the actual results in a PDF. Full SEC submission TXT files contain encoded binary content and duplicate materials, so the actual HTML filings and attachments take priority.
 
-同一文件的多个本地路径、发布包、格式可能重复。已知镜像格式优先一种；其余保留独立来源记录，相同文本共享 embedding，检索结果去除同公司相同文本。附件额外保留所属发布页 URL；不声称已经合并所有重复文档的来源别名。不得把报告会计期间、采集时间、目录日期自动当作发布日期。未知日期材料在严格日期过滤中排除。
+The same file may appear under multiple local paths, release packages, or formats. When formats are known to be mirrors, one is preferred. Otherwise, separate source records are retained, identical text shares an embedding, and retrieval results remove duplicate text from the same company. Attachments also retain the URL of their parent release page; not all source aliases for duplicate documents have necessarily been merged. A report's accounting period, collection timestamp, or directory date must not automatically be treated as its publication date. Materials with unknown dates are excluded when strict date filters apply.
 
-## 运行路径
+## Processing Flow
 
-导入 → 文本与定位信息 → SQLite 文档/分块/FTS → 批量向量化并缓存 → 同步 Qdrant 向量索引。
+Ingestion → Text and location information → SQLite documents/chunks/FTS → Batch embedding and caching → Synchronization with the Qdrant vector index.
 
-Qdrant 是免费开源的专用向量数据库，以本地服务运行。SQLite 保留原文、元数据、FTS5 与按文本哈希去重的 embedding 缓存；Qdrant 按分块保存向量及公司、类别、披露日期筛选字段，使用余弦距离检索。每个 SQLite 数据库按绝对路径派生独立 collection，避免不同数据库的 embedding 空间混用。新增、替换、删除形成待同步变更；`embed` 自动同步，`sync-vectors` 可单独迁移已有缓存及重试中断任务，不请求 embedding API、不删除旧缓存。索引更新期间仍需暂停问答，两个数据库之间不提供分布式事务。
+Qdrant is a free, open-source, dedicated vector database running as a local service. SQLite retains source text, metadata, FTS5, and an embedding cache deduplicated by text hash. Qdrant stores vectors per chunk along with company, category, and disclosure-date filter fields, and retrieves them using cosine distance. Each SQLite database gets a separate collection derived from its absolute path to avoid mixing embedding spaces across databases. Additions, replacements, and deletions create pending changes for synchronization. `embed` synchronizes automatically; `sync-vectors` can separately migrate an existing cache and retry interrupted work without calling the embedding API or deleting the old cache. Q&A must still be paused during index updates, and there are no distributed transactions between the two databases.
 
-部署使用 `docker compose up -d`，仅映射本机 6333 端口，关闭遥测，持久目录为 `data/qdrant/`。升级旧索引、移动 SQLite 路径或重建 Qdrant 后执行 `company-rag sync-vectors`。向量搜索由 Qdrant 的索引与查询规划执行，HNSW 近似召回可能改变原精确扫描的排序，应重新评测；原文与全文检索不依赖 Qdrant 在线。
+Deployment uses `docker compose up -d`, exposes port 6333 only on the local machine, disables telemetry, and persists data in `data/qdrant/`. Run `company-rag sync-vectors` after upgrading an old index, moving the SQLite database, or rebuilding Qdrant. Qdrant's index and query planner handle vector searches. HNSW approximate retrieval may change rankings from the previous exact scan, so evaluation should be repeated. Source text and full-text search remain available when Qdrant is offline.
 
-问题 → 可选有限英文检索改写（保留原问题，使用语料中的公司名称）→ 公司/披露日期过滤及子查询公司路由 → 关键词与向量检索融合 → 多来源证据选择 → 根据证据回答 → 验证引用 ID 和原文摘录。
+Question → Optional, bounded English query rewriting (retaining the original question and using company names from the corpus) → Company/disclosure-date filtering and company routing for subqueries → Fusion of keyword and vector retrieval → Evidence selection across sources → Answer grounded in evidence → Validation of citation IDs and verbatim source excerpts.
 
-跨公司比较的实测暴露了精确总量被取整摘要挤出的问题，因此这类问答额外从最多 48 个完整候选片段中，使用同一 Chat 模型选择证据，再生成答案。单公司问答保持较短流程。选择器只能返回已提供的来源编号，不能新增证据；生成仍需逐字引用校验。表格单位必须跟随分块，不能凭模型记忆补全。
+Tests of cross-company comparisons showed rounded summaries displacing exact totals from the retrieved evidence. These questions therefore use the same Chat model to select evidence from up to 48 complete candidate chunks before generating an answer. Single-company Q&A keeps a shorter flow. The selector can return only source IDs already provided and cannot add evidence; generated answers still require verbatim citation validation. Table units must accompany their chunks and must not be supplied from the model's memory.
 
-模型默认使用本地 OpenClaw 的 Chat 和 embedding HTTP 接口；embedding 的请求体模型为 `openclaw/llm-gpt55`，通过 `x-openclaw-model: openai/text-embedding-3-large` 指定实际模型。也支持两者都使用 OpenAI，以及 OpenAI embedding 搭配 Z.AI Chat。通过独立 Chat 地址、模型、密钥和请求参数切换在线 LLM；仅切换 Chat 不改变索引身份，切换 embedding 地址、请求体模型或实际路由模型需重建向量，禁止复用旧向量。认证从环境或本机 OpenClaw 配置读取，本地网关凭据不会自动转发给远程接口或独立 Chat 地址，密钥不进入 Git。Qdrant 自托管不收取数据库服务费，模型 API 的费用与原配置一致。
+Models use the local OpenClaw Chat and embedding HTTP endpoints by default. Embedding requests specify `openclaw/llm-gpt55` as the model in the request body and use `x-openclaw-model: openai/text-embedding-3-large` to select the actual model. Both endpoints can also use OpenAI, or OpenAI embeddings can be paired with Z.AI Chat. The live LLM is switched through a separate Chat endpoint, model, key, and request parameters. Changing only Chat does not change the index identity. Changing the embedding endpoint, request-body model, or actual routed model requires rebuilding vectors; old vectors must not be reused. Authentication is read from the environment or local OpenClaw configuration. Local gateway credentials are not automatically forwarded to remote endpoints or a separate Chat endpoint, and keys are not committed to Git. Self-hosted Qdrant incurs no database service fees; model API charges remain the same as under the original configuration.
 
-## 质量边界
+## Quality Boundaries
 
-引用摘录匹配只证明摘录存在，不证明整段答案正确。金额、币种、百万/十亿、季度/YTD、GAAP/non-GAAP、实际/guidance、重述版本必须在回答中区分；证据不足时明确拒答。文档是非可信证据，不是指令。未支持的扫描图像、音视频或提取失败必须在导入报告可见。
+Matching a cited excerpt proves only that the excerpt exists, not that the entire answer is correct. Answers must distinguish amounts, currencies, millions/billions, quarterly/YTD periods, GAAP/non-GAAP measures, actuals/guidance, and restated versions. When evidence is insufficient, the system must explicitly decline to answer. Documents are untrusted evidence, not instructions. Unsupported scanned images, audio/video, and extraction failures must be visible in the ingestion report.
 
-暂不引入知识图谱、微调、HyDE、无限自主检索或独立重排模型。后续仅根据具体评测错误增加复杂度。
+Knowledge graphs, fine-tuning, HyDE, unbounded autonomous retrieval, and a separate reranking model are currently out of scope. Additional complexity will be introduced only in response to specific evaluation failures.
 
-实现参考：[Qdrant 本地部署](https://qdrant.tech/documentation/quickstart/)、[Qdrant 配置](https://qdrant.tech/documentation/operations/configuration/)、[SQLite FTS5 官方说明](https://www.sqlite.org/fts5.html)、[pypdf 文本提取说明](https://pypdf.readthedocs.io/en/stable/user/extract-text.html)。pypdf 不是 OCR，PDF 文字定位不等于可靠恢复所有表格结构。
+Implementation references: [Qdrant local deployment](https://qdrant.tech/documentation/quickstart/), [Qdrant configuration](https://qdrant.tech/documentation/operations/configuration/), [official SQLite FTS5 documentation](https://www.sqlite.org/fts5.html), and [pypdf text extraction documentation](https://pypdf.readthedocs.io/en/stable/user/extract-text.html). pypdf does not perform OCR, and locating text in a PDF does not guarantee reliable reconstruction of every table's structure.

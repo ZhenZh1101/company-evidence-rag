@@ -1,6 +1,20 @@
+---
+title: Company Evidence Rag
+emoji: 📉
+colorFrom: indigo
+colorTo: indigo
+sdk: docker
+pinned: false
+license: apache-2.0
+app_port: 7860
+startup_duration_timeout: 1h
+---
+
 # Public Company Document RAG
 
 A locally running **Advanced RAG** system with archive-aware document ingestion, hybrid BM25 + vector retrieval, company and disclosure-date filters, an English/Simplified Chinese interface and Q&A, and verifiable source quotations. Vector retrieval uses the free, open-source, self-hosted [Qdrant](https://github.com/qdrant/qdrant), with no cloud account required; SQLite stores documents, the full-text index, and the embedding cache. English is the default language. See the [architecture notes](docs/architecture.md) for design decisions and tradeoffs, and the [reference paper on arXiv](https://arxiv.org/abs/2312.10997v5).
+
+For a hosted UI with all existing data, Z.AI GLM-5.3-Flash, OpenAI embeddings, IP quotas and a bounded queue, follow the [Hugging Face Spaces deployment guide](docs/huggingface.md). The Docker Space reads a private dataset mounted at `/app/space-data` and restores cached vectors; it does not ingest or embed new documents.
 
 ## Getting Started
 
@@ -57,6 +71,8 @@ If `OPENAI_API_KEY` is already set, use `export RAG_API_KEY="$OPENAI_API_KEY"`; 
 The parameters follow the OpenAI documentation for [Embeddings](https://developers.openai.com/api/reference/resources/embeddings/methods/create) and [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create). Chat uses `max_completion_tokens` for the output budget. The example model, [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini), supports Chat Completions and does not require reasoning parameters. OpenAI embeddings have an 8192-token limit per input. Current chunking is character-based rather than an exact token count, so unusually long inputs or inputs with many special characters may be rejected by the server; the application does not silently truncate text.
 
 When changing Chat models, use the parameters that model supports. `RAG_CHAT_TEMPERATURE=none` omits temperature entirely. `RAG_CHAT_REASONING_EFFORT` accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max` and is omitted when unset, but individual models may not support every value. `max_completion_tokens` includes reasoning tokens. The system budgets 500 tokens for rewriting/selection, 16 for `doctor`, and 4000 for answers, so models that require reasoning may not work within these short budgets. Unset `RAG_CHAT_THINKING` when using OpenAI.
+
+`RAG_CHAT_RESPONSE_FORMAT=json_object` requests JSON output from compatible Chat providers to reduce formatting failures that trigger another model call. Local configurations omit this parameter by default; the Docker Space enables it. Set it to an empty string to omit the parameter, or `text` to request ordinary text output. JSON mode keeps the configured model and existing answer-schema and verbatim-citation validation; invalid answers still receive at most one repair attempt. Embedding requests are unaffected.
 
 ### Using Z.AI for the Live LLM
 
@@ -133,7 +149,9 @@ curl http://127.0.0.1:8000/api/ask \
 
 `language` is optional and defaults to `en`; set it to `zh-CN` for Chinese answers and messages. Unsupported language values return HTTP 422. The response includes the actual `language` used.
 
-`GET /api/stats` and `GET /api/source/{chunk_id}` are also available. The interface and API are designed for local, single-user use, not as a public multi-user service.
+Completed query responses also return stage `timings`, `diagnostics`, and, through the web API, a `request_id`. `retrieval_seconds` includes rewriting, index checks, embedding, keyword/vector search, and comparison selection; it is not just database time. `answer_seconds` measures the first answer call and `repair_seconds` the optional second call, including any gateway retries. `total_seconds` covers `RAG.ask`; the web-only `request_seconds` also covers admission waiting, thread scheduling, opening the store, and Markdown rendering. See the [timing field reference](docs/huggingface.md#query-timings) for the remaining fields and log behavior. Dense/hybrid search validates the index once per search; query counts, result ranking, and request concurrency remain unchanged.
+
+`GET /api/stats` and `GET /api/source/{chunk_id}` are also available. Local serving accepts only local hosts; the Docker Space allows its configured public origin. Question admission allows one executing request plus five waiting, with a rolling limit of five questions per minute and fifty per 24 hours per IP. Run exactly one web worker and one replica; see the deployment guide for proxy configuration and rate-counter storage limits.
 
 ## Testing and Evaluation
 
