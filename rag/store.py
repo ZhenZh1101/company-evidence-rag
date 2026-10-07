@@ -290,15 +290,16 @@ class Store:
              JOIN documents d ON d.id=c.document_id WHERE chunks_fts MATCH ?''' + where +
              ' ORDER BY bm25(chunks_fts,2.0,1.0),c.id LIMIT ?', [match, *values, limit])]
 
-    def dense(self, vector, limit=80, **filters):
+    def dense(self, vector, limit=80, *, _index_checked=False, **filters):
         dimension = self.meta('embedding_dimension')
         if dimension and len(vector) != int(dimension):
             raise ValueError('Query vector dimension does not match the index.')
         if limit < 1:
             return []
-        stats = self.require_vector_index()
-        if not stats['chunks']:
-            return []
+        if not _index_checked:
+            stats = self.require_vector_index()
+            if not stats['chunks']:
+                return []
         conditions = []
         for column, key in [('company', 'companies'), ('category', 'categories')]:
             if filters.get(key):

@@ -106,6 +106,55 @@ class StoreAndRAGTests(unittest.TestCase):
         self.assertEqual(set(planner_data['company_document_titles']), {'CDR','HBR'})
         self.assertEqual(planner_data['company_aliases'], {'CDR': ['Cedar Research'], 'HBR': ['Harbor Labs']})
 
+    def test_multi_query_search_validates_index_once_and_rechecks_next_request(self):
+        self.add('report', 'Revenue was 100 million.')
+        gateway = FakeGateway(replies=[json.dumps({'queries': ['Revenue growth', 'Revenue total', 'Sales']})])
+        self.store.embed_pending(gateway)
+        with patch.object(self.store, 'require_vector_index', wraps=self.store.require_vector_index) as check:
+            result = RAG(self.store, gateway).search('Revenue')
+            self.assertEqual(check.call_count, 1)
+            self.assertEqual(result['diagnostics'], dict(query_count=4, lexical_searches=4, vector_searches=4))
+            self.assertTrue(result['sources'])
+            self.add('new', 'New disclosure awaiting embedding.')
+            with self.assertRaisesRegex(ValueError, 'incomplete'):
+                RAG(self.store, gateway).search('Revenue', rewrite=False)
+            self.assertEqual(check.call_count, 2)
+
+    def test_phase_timings_separate_generation_repair_and_validation(self):
+        quote = 'Revenue was 100 million.'
+        self.add('report', quote)
+        valid = json.dumps({'answer': 'Revenue was 100 million. [S1]', 'insufficient_evidence': False,
+                            'citations': [{'label': 'S1', 'quote': quote}]})
+        for first, failure_stage in [('not json', 'json'), (json.dumps({
+                'answer': 'Revenue was 999 million. [S1]', 'insufficient_evidence': False,
+                'citations': [{'label': 'S1', 'quote': 'Revenue was 999 million.'}]}), 'answer_schema_or_citation')]:
+            with self.subTest(failure_stage=failure_stage):
+                clock = [0.0]
+                gateway = FakeGateway(replies=[first, valid])
+                original_chat, original_lexical = gateway.chat, self.store.lexical
+                def chat(*args, **kwargs):
+                    clock[0] += 3 if not gateway.messages else 5
+                    return original_chat(*args, **kwargs)
+                def lexical(*args, **kwargs):
+                    clock[0] += 2
+                    return original_lexical(*args, **kwargs)
+                with patch('rag.pipeline.time.monotonic', side_effect=lambda: clock[0]), \
+                        patch.object(gateway, 'chat', side_effect=chat), \
+                        patch.object(self.store, 'lexical', side_effect=lexical):
+                    result = RAG(self.store, gateway).ask('Revenue', mode='lexical', rewrite=False)
+                timings = result['timings']
+                self.assertEqual(timings['retrieval_seconds'], 2)
+                self.assertEqual(timings['lexical_seconds'], 2)
+                self.assertEqual(timings['answer_seconds'], 3)
+                self.assertEqual(timings['repair_seconds'], 5)
+                self.assertEqual(timings['total_seconds'], 10)
+                self.assertEqual(timings['embedding_seconds'], 0)
+                self.assertEqual(timings['vector_seconds'], 0)
+                self.assertEqual(result['diagnostics']['answer_attempts'], 2)
+                self.assertEqual(result['diagnostics']['repair_attempts'], 1)
+                self.assertEqual(result['diagnostics']['validation_failures'], [dict(attempt=1, stage=failure_stage)])
+                self.assertEqual(result['citations'][0]['quote'], quote)
+
     def test_archive_company_aliases_reimport_without_reembedding_and_delete_with_document(self):
         from rag.cli import ingest
         archive = self.root / 'archive'
@@ -313,6 +362,25 @@ class StoreAndRAGTests(unittest.TestCase):
                 self.assertEqual(result["citations"], [])
                 self.assertNotIn("999", result["answer"])
                 self.assertEqual(len(gateway.messages), 2)
+
+    def test_noncontiguous_quote_identifies_offending_citation(self):
+        valid_quote = 'GAAP revenue was 193.4 million.'
+        heading = 'Three Months Ended June 30'
+        row = 'Total sales | 10,876 | 10,351'
+        sources = [{'label': 'S1', 'text': valid_quote},
+                   {'label': 'S2', 'text': heading + '\n2026 | 2025\n' + row}]
+        payload = {'answer': 'Revenue 193.4 million [S1]; sales 10,876 million [S2].',
+                   'insufficient_evidence': False,
+                   'citations': [{'label': 'S1', 'quote': valid_quote},
+                                 {'label': 'S2', 'quote': row}]}
+        for separator in (' ... ', ' '):
+            with self.subTest(separator=separator):
+                payload['citations'][1]['quote'] = heading + separator + row
+                with self.assertRaisesRegex(ValueError, r'Citation 2 \(S2\) quote does not occur'):
+                    RAG.validate_answer(payload, sources)
+        payload['citations'][1]['quote'] = row
+        result = RAG.validate_answer(payload, sources)
+        self.assertEqual([citation['quote'] for citation in result['citations']], [valid_quote, row])
 
     def test_valid_quote_preserves_traceable_source(self):
         self.add("report", "Revenue was 100 million in fiscal 2026.")

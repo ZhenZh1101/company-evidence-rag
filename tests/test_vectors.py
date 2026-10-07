@@ -99,6 +99,15 @@ class VectorStoreTests(unittest.TestCase):
                                          date_from='2026-07-21', date_to='2026-07-21'), [wanted])
         self.assertIn(undated, self.store.dense(np.array([1, 0]), companies=['ALFA'], categories=['results']))
 
+    def test_prechecked_dense_preserves_vector_guards(self):
+        self.add('report', 'Current source evidence.')
+        self.store.embed_pending(self.gateway)
+        self.store.require_vector_index()
+        with patch.object(self.client, 'query_points', side_effect=AssertionError('Invalid vectors must not be searched')):
+            with self.assertRaisesRegex(ValueError, 'dimension'):
+                self.store.dense(np.array([1, 0, 0]), limit=0, _index_checked=True)
+            self.assertEqual(self.store.dense(np.array([1, 0]), limit=0, _index_checked=True), [])
+
     def test_failed_upsert_resumes_from_cached_embeddings(self):
         chunk_id = self.add('report', 'Recoverable evidence.')
         with patch.object(self.client, 'upsert', side_effect=RuntimeError('temporary vector outage')):
@@ -126,12 +135,15 @@ class VectorStoreTests(unittest.TestCase):
         chunk_id = self.add('report', 'Current source evidence.')
         self.store.embed_pending(self.gateway)
         collection = self.client.get_collections().collections[0].name
-        self.client.set_payload(collection_name=collection, payload={'text_hash': 'stale-source-hash'}, points=[chunk_id], wait=True)
-        with self.assertRaisesRegex(ValueError, 'mismatch'):
-            self.store.dense(np.array([1, 0]))
-        self.assertEqual(self.store.stats()['pending_vector_changes'], 1)
-        self.store.sync_vectors()
-        self.assertEqual(self.store.dense(np.array([1, 0])), [chunk_id])
+        for index_checked in (False, True):
+            with self.subTest(index_checked=index_checked):
+                self.store.require_vector_index()
+                self.client.set_payload(collection_name=collection, payload={'text_hash': 'stale-source-hash'}, points=[chunk_id], wait=True)
+                with self.assertRaisesRegex(ValueError, 'mismatch'):
+                    self.store.dense(np.array([1, 0]), _index_checked=index_checked)
+                self.assertEqual(self.store.stats()['pending_vector_changes'], 1)
+                self.store.sync_vectors()
+                self.assertEqual(self.store.dense(np.array([1, 0])), [chunk_id])
         self.gateway.embed.assert_called_once()
 
     def test_independent_sqlite_databases_use_independent_collections(self):
@@ -157,7 +169,10 @@ class VectorStoreTests(unittest.TestCase):
             lambda: self.client.delete_collection(collection_name=collection),
         ):
             with self.subTest(remove=remove):
+                self.assertEqual(self.store.dense(np.array([1, 0])), [chunk_id])
                 remove()
+                with self.assertRaises((ValueError, RuntimeError)):
+                    self.store.dense(np.array([1, 0]))
                 with self.assertRaises((ValueError, RuntimeError)):
                     RAG(self.store, self.gateway).search('Revenue', mode='dense', rewrite=False)
                 self.assertTrue(RAG(self.store, self.gateway).search('Recoverable', mode='lexical', rewrite=False)['sources'])

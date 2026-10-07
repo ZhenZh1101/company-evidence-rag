@@ -2,6 +2,7 @@ import json
 import re
 import time
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from datetime import date
 from .client import parse_json
 
@@ -47,6 +48,15 @@ def mentioned_companies(question, known, aliases=None):
         for name in (c, *aliases.get(c, [])))]
 
 
+@contextmanager
+def measure(timings, stage):
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        timings[stage] += time.monotonic() - started
+
+
 class RAG:
     def __init__(self, store, gateway):
         self.store, self.gateway = store, gateway
@@ -60,6 +70,9 @@ class RAG:
         if mode not in ('hybrid', 'lexical', 'dense') or not 1 <= top_k <= (48 if _candidate_pool else 20):
             raise ValueError('Invalid mode or top_k (1–20).')
         validate_filters(date_from, date_to)
+        timings = dict.fromkeys(('rewrite_seconds', 'index_check_seconds', 'embedding_seconds',
+                                 'lexical_seconds', 'vector_seconds'), 0.0)
+        diagnostics = dict(lexical_searches=0, vector_searches=0)
         aliases = self.store.company_aliases()
         known = set(aliases)
         if companies and not set(companies) <= known:
@@ -69,6 +82,7 @@ class RAG:
             companies = detected or None
         queries, warning_codes = [question.strip()], []
         if rewrite:
+            rewrite_started = time.monotonic()
             try:
                 company_context = {c: [r[0] for r in self.store.db.execute(
                     "SELECT title FROM documents WHERE company=? ORDER BY CASE WHEN category LIKE 'sec_%' THEN 0 ELSE 1 END,id LIMIT 2", (c,))]
@@ -84,11 +98,15 @@ class RAG:
                 queries = list(dict.fromkeys(queries))
             except (ValueError, TypeError, AttributeError, RuntimeError):
                 warning_codes.append('query_rewrite_unavailable')
+            finally:
+                timings['rewrite_seconds'] = time.monotonic() - rewrite_started
         filters = dict(companies=companies, date_from=date_from, date_to=date_to, categories=categories)
         if mode != 'lexical':
-            self.store.check_embedding_identity(self.gateway)
-            stats = self.store.require_vector_index()
-            vectors = self.gateway.embed(queries) if stats['chunks'] else []
+            with measure(timings, 'index_check_seconds'):
+                self.store.check_embedding_identity(self.gateway)
+                stats = self.store.require_vector_index()
+            with measure(timings, 'embedding_seconds'):
+                vectors = self.gateway.embed(queries) if stats['chunks'] else []
         scores = defaultdict(float)
         subrankings = []
         # Search each selected company separately so comparisons can include both sides.
@@ -100,9 +118,13 @@ class RAG:
                 local = dict(filters, companies=group)
                 rankings = []
                 if mode != 'dense':
-                    rankings.append(self.store.lexical(query, **local))
+                    with measure(timings, 'lexical_seconds'):
+                        rankings.append(self.store.lexical(query, **local))
+                    diagnostics['lexical_searches'] += 1
                 if mode != 'lexical' and len(vectors):
-                    rankings.append(self.store.dense(vectors[i], **local))
+                    with measure(timings, 'vector_seconds'):
+                        rankings.append(self.store.dense(vectors[i], _index_checked=True, **local))
+                    diagnostics['vector_searches'] += 1
                 subscore = defaultdict(float)
                 for ranking in rankings:
                     for rank, chunk_id in enumerate(ranking, 1):
@@ -138,8 +160,10 @@ class RAG:
             warning_codes.append('publication_date_filter')
         for i, source in enumerate(selected, 1):
             source['label'] = f'S{i}'
+        diagnostics['query_count'] = len(queries)
         return dict(sources=selected, queries=queries, warnings=[MESSAGES[language][code] for code in warning_codes],
-                    warning_codes=warning_codes, filters=filters, mode=mode, language=language)
+                    warning_codes=warning_codes, filters=filters, mode=mode, language=language,
+                    timings=timings, diagnostics=diagnostics)
 
     @staticmethod
     def validate_answer(payload, sources, language='en'):
@@ -147,12 +171,12 @@ class RAG:
             raise ValueError('Missing answer or insufficient_evidence.')
         lookup = {s['label']: s for s in sources}
         citations = []
-        for item in payload.get('citations', []):
+        for index, item in enumerate(payload.get('citations', []), 1):
             label, quote = item.get('label'), item.get('quote')
             if label not in lookup or not isinstance(quote, str) or len(normalized(quote)) < 8:
                 raise ValueError('Invalid citation.')
             if normalized(quote) not in normalized(lookup[label]['text']):
-                raise ValueError('Citation quote does not occur in the provided source.')
+                raise ValueError(f'Citation {index} ({label}) quote does not occur in the provided source.')
             citations.append(dict(label=label, quote=quote, source=lookup[label]))
         cited = {c['label'] for c in citations}
         used = set(re.findall(r'\[(S\d+)\]', payload['answer']))
@@ -175,8 +199,12 @@ class RAG:
         comparison = len(scope or []) > 1
         options = dict(kwargs, top_k=48, _candidate_pool=True) if comparison else kwargs
         result = self.search(question, language=language, **options)
+        timings, diagnostics = result['timings'], result['diagnostics']
+        timings.update(selection_seconds=0.0, answer_seconds=0.0, repair_seconds=0.0, validation_seconds=0.0)
+        diagnostics.update(answer_attempts=0, repair_attempts=0, validation_failures=[])
         if comparison and result['sources']:
             candidates = result['sources']
+            selection_started = time.monotonic()
             try:
                 evidence = [{k:s[k] for k in ('label','company','title','publication_date','locator','text')} for s in candidates]
                 selection = parse_json(self.gateway.chat([
@@ -190,6 +218,8 @@ class RAG:
             except (ValueError, TypeError, KeyError, AttributeError, RuntimeError):
                 result['sources'] = candidates[:requested_k]
                 result['warning_codes'].append('comparison_selection_unavailable')
+            finally:
+                timings['selection_seconds'] = time.monotonic() - selection_started
             for i, source in enumerate(result['sources'],1):
                 source['label'] = f'S{i}'
         retrieved = time.monotonic()
@@ -213,19 +243,28 @@ Keep the answer focused, normally under 500 words. If insufficient, use concise 
             messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': json.dumps(
                         {'question': question, 'filters': result['filters'], 'evidence': evidence}, ensure_ascii=False)}]
             for attempt in range(2):
-                raw = self.gateway.chat(messages, max_tokens=4000)
+                diagnostics['answer_attempts'] += 1
+                diagnostics['repair_attempts'] += int(attempt > 0)
+                with measure(timings, 'repair_seconds' if attempt else 'answer_seconds'):
+                    raw = self.gateway.chat(messages, max_tokens=4000)
+                validation_stage = 'json'
                 try:
-                    answer = self.validate_answer(parse_json(raw), sources, language)
+                    with measure(timings, 'validation_seconds'):
+                        payload = parse_json(raw)
+                        validation_stage = 'answer_schema_or_citation'
+                        answer = self.validate_answer(payload, sources, language)
                     break
                 except (ValueError, TypeError, AttributeError) as exc:
+                    diagnostics['validation_failures'].append(dict(attempt=attempt + 1, stage=validation_stage))
                     if attempt:
                         answer = dict(answer=MESSAGES[language]['invalid_answer'], answer_code='answer_validation_failed',
                                       insufficient_evidence=True, citations=[])
                         result['warning_codes'].append('answer_validation_failed')
                     else:
                         messages.extend([{'role': 'assistant', 'content': raw}, {'role': 'user', 'content':
-                            f'Validation error: {exc}. Return the required JSON. Match all inline [S#] labels with citations. Use SHORT exact row/sentence excerpts from source text; do not reproduce a whole table or alter separators. Multiple quotes may share a label. If the evidence is insufficient, return insufficient_evidence=true with citations:[] and no factual guess.'}])
+                            f'Validation error: {exc}. Return the required JSON. Match all inline [S#] labels with citations. Copy each quote from one contiguous row or sentence in its named source; never join headers and rows or add ellipses. Keep quotes SHORT and preserve separators. Multiple quotes may share a label. If the evidence is insufficient, return insufficient_evidence=true with citations:[] and no factual guess.'}])
         result.update(answer)
         result['warnings'] = [MESSAGES[language][code] for code in result['warning_codes']]
-        result['timings'] = dict(retrieval_seconds=round(retrieved-started, 2), total_seconds=round(time.monotonic()-started, 2))
+        timings.update(retrieval_seconds=retrieved-started, total_seconds=time.monotonic()-started)
+        result['timings'] = {key: round(value, 4) for key, value in timings.items()}
         return result
