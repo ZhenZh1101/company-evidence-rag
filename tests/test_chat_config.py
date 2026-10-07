@@ -21,6 +21,7 @@ class ChatConfigurationTests(unittest.TestCase):
         self.assertIsNone(defaults.chat_api_key)
         self.assertEqual(defaults.chat_temperature, 0)
         self.assertIsNone(defaults.chat_thinking)
+        self.assertIsNone(defaults.chat_response_format)
         env = {
             'RAG_API_KEY': 'embedding-key',
             'RAG_CHAT_BASE_URL': 'https://api.z.ai/api/paas/v4/',
@@ -28,6 +29,7 @@ class ChatConfigurationTests(unittest.TestCase):
             'RAG_CHAT_MODEL': 'glm-4.7',
             'RAG_CHAT_TEMPERATURE': '0.1',
             'RAG_CHAT_THINKING': 'disabled',
+            'RAG_CHAT_RESPONSE_FORMAT': 'json_object',
         }
         with patch.dict('os.environ', env, clear=True):
             settings = Settings.from_env()
@@ -39,6 +41,7 @@ class ChatConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.chat_model, 'glm-4.7')
         self.assertEqual(settings.chat_temperature, 0.1)
         self.assertEqual(settings.chat_thinking, 'disabled')
+        self.assertEqual(settings.chat_response_format, 'json_object')
         with patch.dict('os.environ', dict(env, RAG_CHAT_BASE_URL='', RAG_CHAT_API_KEY=''), clear=True):
             settings = Settings.from_env()
         self.assertEqual(settings.chat_base_url, '')
@@ -51,6 +54,7 @@ class ChatConfigurationTests(unittest.TestCase):
                                   'https://example.test/v4#fragment'],
             'RAG_CHAT_TEMPERATURE': ['-0.1', '2.1', 'nan', 'inf', '-inf', 'bad'],
             'RAG_CHAT_THINKING': ['auto', 'true'],
+            'RAG_CHAT_RESPONSE_FORMAT': ['json', 'json_schema', 'JSON_OBJECT', 'none'],
         }
         for name, values in invalid.items():
             for value in values:
@@ -69,7 +73,7 @@ class ChatConfigurationTests(unittest.TestCase):
     def test_chat_and_embeddings_use_independent_requests(self):
         settings = Settings(api_key='embedding-key', chat_base_url='https://api.z.ai/api/paas/v4',
                             chat_api_key='chat-key', chat_model='glm-4.7', chat_temperature=0.1,
-                            chat_thinking='disabled')
+                            chat_thinking='disabled', chat_response_format='json_object')
         gateway = Gateway(settings)
         messages = [{'role': 'user', 'content': 'Return a short answer.'}]
         replies = [
@@ -88,6 +92,7 @@ class ChatConfigurationTests(unittest.TestCase):
         self.assertEqual(json.loads(chat.data), {
             'model': 'glm-4.7', 'messages': messages, 'temperature': 0.1,
             'max_tokens': 500, 'thinking': {'type': 'disabled'},
+            'response_format': {'type': 'json_object'},
         })
         self.assertEqual(embedding.full_url, settings.base_url + '/embeddings')
         self.assertEqual(embedding.get_header('Authorization'), 'Bearer embedding-key')
@@ -108,6 +113,38 @@ class ChatConfigurationTests(unittest.TestCase):
                 self.assertEqual(payload['temperature'], 0)
                 self.assertEqual(payload['max_tokens'], 2400)
                 self.assertNotIn('thinking', payload)
+                self.assertNotIn('response_format', payload)
+
+    def test_text_response_format_and_empty_override(self):
+        for value in ('text', ''):
+            with self.subTest(value=value), patch.dict('os.environ', {
+                    'RAG_API_KEY': 'chat-key', 'RAG_CHAT_RESPONSE_FORMAT': value}, clear=True):
+                settings = Settings.from_env()
+            self.assertEqual(settings.chat_response_format, value or None)
+            with patch('rag.client.request.build_opener') as build:
+                build.return_value.open.return_value = io.BytesIO(b'{"choices":[{"message":{"content":"OK"}}]}')
+                self.assertEqual(Gateway(settings).chat([{'role': 'user', 'content': 'Reply with only OK.'}]), 'OK')
+                payload = json.loads(build.return_value.open.call_args.args[0].data)
+            if value:
+                self.assertEqual(payload['response_format'], {'type': 'text'})
+            else:
+                self.assertNotIn('response_format', payload)
+
+    def test_doctor_prompt_matches_chat_response_format(self):
+        from rag.cli import doctor
+        for response_format in (None, 'text', 'json_object'):
+            with self.subTest(response_format=response_format), \
+                    patch('qdrant_client.QdrantClient') as client, \
+                    patch('rag.cli.Gateway') as gateway_class, patch('rag.cli.output') as output:
+                client.return_value.get_collections.return_value.collections = []
+                gateway = gateway_class.return_value
+                gateway.embed.return_value = np.array([[1, 0], [1, 0], [0, 1]])
+                json_mode = response_format == 'json_object'
+                gateway.chat.return_value = '{"status":"OK"}' if json_mode else 'OK'
+                self.assertFalse(doctor(Settings(chat_response_format=response_format)))
+                prompt = 'Return JSON: {"status":"OK"}.' if json_mode else 'Reply with only OK.'
+                gateway.chat.assert_called_once_with([{'role': 'user', 'content': prompt}], max_tokens=16)
+                self.assertEqual(output.call_args.args[0]['chat'], gateway.chat.return_value)
 
     def test_missing_or_explicitly_empty_chat_key_never_sends_request(self):
         base = 'http://127.0.0.1:18789/v1'

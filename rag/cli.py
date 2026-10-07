@@ -37,7 +37,8 @@ def doctor(settings):
     except (ValueError, RuntimeError, OSError) as exc:
         report['errors']['embedding'] = str(exc)
     try:
-        report['chat'] = gateway.chat([{'role':'user','content':'Reply with only OK.'}], max_tokens=16)
+        prompt = 'Return JSON: {"status":"OK"}.' if settings.chat_response_format == 'json_object' else 'Reply with only OK.'
+        report['chat'] = gateway.chat([{'role':'user','content':prompt}], max_tokens=16)
     except (ValueError, RuntimeError, OSError) as exc:
         report['errors']['chat'] = str(exc)
     output(report)

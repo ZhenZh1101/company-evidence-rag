@@ -20,6 +20,8 @@ class Settings:
     chat_thinking: str | None = None
     chat_token_limit_field: str = 'max_tokens'
     chat_reasoning_effort: str | None = None
+    chat_min_tokens: int = 0
+    chat_response_format: str | None = None
     qdrant_url: str = 'http://127.0.0.1:6333'
 
     @property
@@ -50,6 +52,12 @@ class Settings:
         reasoning_effort = os.getenv('RAG_CHAT_REASONING_EFFORT') or None
         if reasoning_effort not in (None, 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'):
             raise ValueError('Invalid RAG_CHAT_REASONING_EFFORT.')
+        min_tokens = int(os.getenv('RAG_CHAT_MIN_TOKENS', '0'))
+        if not 0 <= min_tokens <= 128000:
+            raise ValueError('RAG_CHAT_MIN_TOKENS must be between 0 and 128000.')
+        response_format = os.getenv('RAG_CHAT_RESPONSE_FORMAT') or None
+        if response_format not in (None, 'json_object', 'text'):
+            raise ValueError('RAG_CHAT_RESPONSE_FORMAT must be json_object, text, or unset.')
         parsed = urlsplit(base_url)
         token = os.getenv('RAG_API_KEY', '')
         # Never forward the local gateway credential to a differently configured host.
@@ -64,4 +72,5 @@ class Settings:
                    timeout=float(os.getenv('RAG_TIMEOUT', '180')), chat_base_url=chat_base_url,
                    chat_api_key=os.getenv('RAG_CHAT_API_KEY'), chat_temperature=temperature,
                    chat_thinking=thinking, chat_token_limit_field=token_limit_field,
-                   chat_reasoning_effort=reasoning_effort, qdrant_url=qdrant_url)
+                   chat_reasoning_effort=reasoning_effort, chat_min_tokens=min_tokens,
+                   chat_response_format=response_format, qdrant_url=qdrant_url)

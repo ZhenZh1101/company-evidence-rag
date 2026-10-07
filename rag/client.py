@@ -89,13 +89,15 @@ class Gateway:
 
     def chat(self, messages, max_tokens=2400):
         payload = {'model': self.settings.chat_model, 'messages': messages,
-                   self.settings.chat_token_limit_field: max_tokens}
+                   self.settings.chat_token_limit_field: max(max_tokens, self.settings.chat_min_tokens)}
         if self.settings.chat_temperature is not None:
             payload['temperature'] = self.settings.chat_temperature
         if self.settings.chat_thinking is not None:
             payload['thinking'] = {'type': self.settings.chat_thinking}
         if self.settings.chat_reasoning_effort is not None:
             payload['reasoning_effort'] = self.settings.chat_reasoning_effort
+        if self.settings.chat_response_format is not None:
+            payload['response_format'] = {'type': self.settings.chat_response_format}
         data = self._post('chat/completions', payload)
         try:
             choice = data['choices'][0]
