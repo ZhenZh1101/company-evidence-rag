@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in · Company RAG</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f7f8;color:#20343c;font:16px/1.6 system-ui,sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}.card{width:100%;max-width:420px;background:white;border:1px solid #dce4e6;border-radius:18px;padding:36px;box-shadow:0 12px 40px #20343c09}.mark{width:40px;height:40px;background:#396a65;color:white;border-radius:10px;display:grid;place-items:center;font-weight:750}h1{font-size:27px;margin:22px 0 6px}p{color:#68777d;margin:0 0 24px}label{display:block;margin:16px 0 6px;font-weight:600}input{display:block;width:100%;font:inherit;padding:10px 12px;border:1px solid #ccd8dc;border-radius:8px}input:focus{outline:2px solid #9fc6ba;outline-offset:2px}button,.link{display:block;width:100%;margin-top:24px;padding:11px 15px;background:#396a65;color:white;border:0;border-radius:8px;font:inherit;font-weight:650;cursor:pointer;text-align:center;text-decoration:none}button:disabled{opacity:.6;cursor:wait}.error{color:#962e2e;background:#fff2f2;border-radius:8px;padding:10px;margin-top:18px;font-size:14px}.note{font-size:13px;margin:22px 0 0}[hidden]{display:none!important}
+</style>
+</head>
+<body><main class="card">
+<div class="mark" aria-hidden="true">R</div>
+<h1 data-text="title">Sign in to Company RAG</h1>
+<p data-text="intro">Use the account provided by the site owner.</p>
+<form id="login-form" method="post" action="/api/login">
+<label for="username" data-text="username">Username</label><input id="username" name="username" required maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false">
+<label for="password" data-text="password">Password</label><input id="password" name="password" type="password" required maxlength="1024" autocomplete="current-password">
+<button id="sign-in" type="submit" data-text="submit">Sign in</button>
+</form>
+<div id="standalone" hidden><p data-text="iframe">Open the app in its own tab to sign in.</p><a id="open-app" class="link" target="_blank" rel="noopener noreferrer" data-text="open">Open app</a></div>
+<div id="error" class="error" role="alert" hidden></div>
+<p class="note" data-text="note">Accounts are managed by the site owner. Ask them to add or reset your account.</p>
+<noscript>Please enable JavaScript to sign in.</noscript>
+</main><script>
+const language='en';
+const t={title:'Sign in to Company RAG',intro:'Use the account provided by the site owner.',username:'Username',password:'Password',submit:'Sign in',busy:'Signing in…',network:'Unable to sign in. Check your connection and try again.',iframe:'Open the app in its own tab to sign in.',open:'Open app',note:'Accounts are managed by the site owner. Ask them to add or reset your account.'};
+document.title=t.title;
+document.querySelectorAll('[data-text]').forEach(e=>e.textContent=t[e.dataset.text]);
+const form=document.getElementById('login-form'),button=document.getElementById('sign-in'),error=document.getElementById('error');
+if(window.self!==window.top){form.hidden=true;document.getElementById('standalone').hidden=false;document.getElementById('open-app').href=location.origin+'/';}
+form.addEventListener('submit',async event=>{
+ event.preventDefault();if(button.disabled)return;button.disabled=true;button.textContent=t.busy;error.hidden=true;
+ try{
+  const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json','Accept-Language':language},body:JSON.stringify({username:document.getElementById('username').value.trim(),password:document.getElementById('password').value})});
+  const data=await response.json();if(!response.ok)throw new Error(data.error_messages?.[language]||data.detail||t.network);
+  document.getElementById('password').value='';
+  try{localStorage.setItem('rag-language','en');}catch{}
+  location.replace('/');
+ }catch(exc){error.textContent=exc instanceof TypeError?t.network:exc.message;error.hidden=false;document.getElementById('password').value='';}
+ finally{button.disabled=false;button.textContent=t.submit;}
+});
+</script></body></html>

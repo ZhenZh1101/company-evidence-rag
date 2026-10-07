@@ -32,8 +32,8 @@
 </head>
 <body>
   <header>
-    <div class="brand"><div class="brand-mark" aria-hidden="true">R</div><div><strong data-i18n="brand">Company RAG</strong><small data-i18n="brandSubtitle">Research workspace · Local documents, traceable answers</small></div></div>
-    <div class="header-actions"><div class="status" role="status"><span id="status-dot" class="dot"></span><span id="index-status" data-i18n="indexLoading">Reading index…</span></div><label class="language-control" for="language"><span data-i18n="language">Language</span><select id="language"><option value="en" lang="en" selected>English</option><option value="zh-CN" lang="zh-CN">中文</option></select></label></div>
+    <div class="brand"><div class="brand-mark" aria-hidden="true">R</div><div><strong data-i18n="brand">Company RAG</strong><small data-i18n="brandSubtitle">Research workspace · Archived documents, traceable answers</small></div></div>
+    <div class="header-actions"><span id="signed-in-user" class="subtle" hidden></span><button id="logout" class="quiet-button" type="button" data-i18n="logout" hidden>Sign out</button><div class="status" role="status"><span id="status-dot" class="dot"></span><span id="index-status" data-i18n="indexLoading">Reading index…</span></div><label class="language-control" for="language"><span data-i18n="language">Language</span><select id="language"><option value="en" lang="en" selected>English</option><option value="zh-CN" lang="zh-CN">中文</option></select></label></div>
   </header>
   <div class="layout">
     <aside data-i18n-aria-label="scopeLabel" aria-label="Search scope">
@@ -63,7 +63,11 @@
         <div class="question-box"><label for="question" class="question-label" data-i18n="questionLabel">What would you like to know?</label><textarea id="question" required maxlength="4000" data-i18n-placeholder="questionPlaceholder" placeholder="For example: What are the main business risks in the selected companies’ latest annual reports? Cite the sources and state the reporting periods."></textarea><div class="question-footer"><span data-i18n="questionHint">Specify the company, period and metric to help locate evidence.</span><button class="primary" id="submit" type="submit" data-i18n="submit">Search and answer ↗</button></div></div>
         <div class="options"><label><input id="rewrite" type="checkbox" checked><span data-i18n="rewrite">Cross-language query rewriting</span></label><label for="mode"><span data-i18n="mode">Search method</span><select id="mode"><option value="hybrid" data-i18n="hybrid">Hybrid</option><option value="lexical" data-i18n="lexical">Keyword</option><option value="dense" data-i18n="dense">Vector</option></select></label><label for="top-k"><span data-i18n="evidenceCount">Sources</span><select id="top-k"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select></label></div>
       </form>
-      <div class="examples" data-i18n-aria-label="examples" aria-label="Example questions"><button class="example" type="button" data-i18n="exampleRisks">Summarize the main risk factors in the selected companies’ latest annual reports, with source quotes.</button><button class="example" type="button" data-i18n="exampleDevelopments">What business developments have the selected companies disclosed? Organize them by date.</button></div>
+      <div id="examples" class="examples" data-i18n-aria-label="examples" aria-label="Recommended questions" hidden>
+        <button class="example" type="button" data-company="CBRS" data-question="questionCbrs" data-i18n="exampleCbrs">CBRS · What does the Mikkeli capacity agreement commit to?</button>
+        <button class="example" type="button" data-company="AMKR" data-question="questionAmkr" data-i18n="exampleAmkr">AMKR · What customer demand supports the Arizona expansion?</button>
+        <button class="example" type="button" data-company="VST" data-question="questionVst" data-i18n="exampleVst">VST · What capacity do the Meta power agreements cover?</button>
+      </div>
       <div id="error" class="message error" role="alert" hidden></div>
       <div id="loading" class="message loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><span data-i18n="answerLoading">Searching documents and generating an answer with sources…</span></div>
       <div id="empty" class="empty"><div><span class="step" data-i18n="stepScope">01 / SCOPE</span><b data-i18n="scopeTitle">Set your research scope</b><p data-i18n="scopeDescription">Narrow the search by company and publication date, or search several companies together.</p></div><div><span class="step" data-i18n="stepRetrieve">02 / RETRIEVE</span><b data-i18n="retrieveTitle">Combine keywords and meaning</b><p data-i18n="retrieveDescription">Hybrid search finds both exact terms and semantically related passages.</p></div><div><span class="step" data-i18n="stepVerify">03 / VERIFY</span><b data-i18n="verifyTitle">Check the original evidence</b><p data-i18n="verifyDescription">Use citation labels, source passages and original links to check what supports each answer.</p></div></div>
@@ -75,7 +79,7 @@
         <div id="sources" class="evidence"></div>
         <details id="query-details" class="query-details"><summary data-i18n="queries">View search queries</summary><ul id="queries"></ul></details>
       </section>
-      <p class="footer-note" data-i18n="footer">Local research workspace · Manage document imports and indexing from the command line</p>
+      <p class="footer-note" data-i18n="footer">Per IP: 5 questions per minute, 50 per 24 hours · Up to 5 requests waiting</p>
     </main>
   </div>
   <script>
@@ -83,7 +87,8 @@
   "en": {
     "pageTitle": "Company RAG · Research workspace",
     "brand": "Company RAG",
-    "brandSubtitle": "Research workspace · Local documents, traceable answers",
+    "logout": "Sign out",
+    "brandSubtitle": "Research workspace · Archived documents, traceable answers",
     "language": "Language",
     "indexLoading": "Reading index…",
     "scopeLabel": "Search scope",
@@ -119,9 +124,14 @@
     "lexical": "Keyword",
     "dense": "Vector",
     "evidenceCount": "Sources",
-    "examples": "Example questions",
-    "exampleRisks": "Summarize the main risk factors in the selected companies’ latest annual reports, with source quotes.",
-    "exampleDevelopments": "What business developments have the selected companies disclosed? Organize them by date.",
+    "examples": "Recommended questions",
+    "exampleCbrs": "CBRS · What does the Mikkeli capacity agreement commit to?",
+    "exampleAmkr": "AMKR · What customer demand supports the Arizona expansion?",
+    "exampleVst": "VST · What capacity do the Meta power agreements cover?",
+    "questionCbrs": "Based on Cerebras (CBRS)'s September 1, 2026 announcement about the Mikkeli data center in Finland, what obligations does each party have under the seven-year capacity agreements? How will capacity be delivered in phases, and what stage has construction reached?",
+    "questionAmkr": "Based on Amkor (AMKR)'s September 8, 2026 announcement about Phase 2 of the Arizona campus, what evidence of customer demand supports the expansion? When are construction and completion expected?",
+    "questionVst": "Based on Vistra (VST)'s January 9, 2026 announcement about the Meta power purchase agreements, how long do the contracts last? How much contracted capacity comes from existing generation, and how much requires capacity expansion?",
+    "exampleInstruction": "Use only the specified announcement. Answer in up to three brief points, cite the key evidence, and distinguish completed milestones from future plans. Explicitly identify any contract terms that were not disclosed.",
     "answerLoading": "Searching documents and generating an answer with sources…",
     "stepScope": "01 / SCOPE",
     "stepRetrieve": "02 / RETRIEVE",
@@ -137,15 +147,15 @@
     "answerNote": "Answers use the documents retrieved for this question. Check the sources below for figures, time periods and company comparisons.",
     "evidence": "Source evidence",
     "queries": "View search queries",
-    "footer": "Local research workspace · Manage document imports and indexing from the command line",
-    "invalidResponse": "The server returned an unreadable response. Check the local service.",
+    "footer": "Per IP: 5 questions per minute, 50 per 24 hours · Up to 5 requests waiting",
+    "invalidResponse": "The server returned an unreadable response. Please try again.",
     "requestFailed": "Request failed ({status}).",
-    "networkError": "Request failed. Check that the local service is running.",
+    "networkError": "Request failed. Check your connection and try again.",
     "documentCount": "{count} docs",
     "noCompanies": "No companies yet. Import documents first.",
     "noIndex": "No document index",
     "partialIndex": "Vector index {indexed} / {chunks}",
-    "indexReady": "Local index ready",
+    "indexReady": "Index ready",
     "indexUnavailable": "Index status unavailable",
     "companiesUnavailable": "Could not load the company list.",
     "unknownCompany": "Company not specified",
@@ -177,7 +187,8 @@
   "zh-CN": {
     "pageTitle": "公司文档 RAG · 研究工作台",
     "brand": "公司文档 RAG",
-    "brandSubtitle": "研究工作台 · 本地文档与可追溯问答",
+    "logout": "退出登录",
+    "brandSubtitle": "研究工作台 · 归档文档与可追溯问答",
     "language": "语言",
     "indexLoading": "正在读取索引…",
     "scopeLabel": "检索范围",
@@ -213,9 +224,14 @@
     "lexical": "关键词检索",
     "dense": "向量检索",
     "evidenceCount": "证据数",
-    "examples": "示例问题",
-    "exampleRisks": "概括所选公司最新年报中的主要风险因素，并引用原文。",
-    "exampleDevelopments": "所选公司披露了哪些业务进展？请按日期梳理。",
+    "examples": "推荐问题",
+    "exampleCbrs": "CBRS · Mikkeli 容量协议承诺了什么？",
+    "exampleAmkr": "AMKR · 哪些客户需求支撑亚利桑那扩产？",
+    "exampleVst": "VST · Meta 购电协议覆盖哪些容量？",
+    "questionCbrs": "根据 Cerebras（CBRS）2026年9月1日芬兰 Mikkeli 数据中心公告，七年容量合同中双方各承担什么义务？容量如何分期交付，目前建设推进到哪一步？",
+    "questionAmkr": "根据 Amkor（AMKR）2026年9月8日亚利桑那园区二期扩产公告，公司披露了哪些客户需求依据？二期预计何时开工、何时建成？",
+    "questionVst": "根据 Vistra（VST）2026年1月9日 Meta 购电协议公告，协议期限多长？覆盖容量中，现有机组和新增扩容分别占多少？",
+    "exampleInstruction": "仅依据指定公告，最多用三个简短要点回答，给出关键引用，区分已完成事项与未来计划；未披露的合同条款请明确说明。",
     "answerLoading": "正在检索材料并生成有出处的回答…",
     "stepScope": "01 / 范围",
     "stepRetrieve": "02 / 检索",
@@ -231,15 +247,15 @@
     "answerNote": "回答基于本次检索到的材料。涉及数值、时间范围和跨公司比较时，请结合下方原文核对。",
     "evidence": "原文证据",
     "queries": "查看实际检索查询",
-    "footer": "本地研究工作台 · 文档导入与索引由命令行管理",
-    "invalidResponse": "服务返回了无法解析的响应，请检查本地服务。",
+    "footer": "每个 IP：每分钟最多 5 次提问，每 24 小时最多 50 次 · 最多 5 个请求等待",
+    "invalidResponse": "服务返回了无法解析的响应，请重试。",
     "requestFailed": "请求失败（{status}）。",
-    "networkError": "请求失败，请确认本地服务仍在运行。",
+    "networkError": "请求失败，请检查网络连接并重试。",
     "documentCount": "{count} 份",
     "noCompanies": "暂无公司，请先导入文档。",
     "noIndex": "暂无文档索引",
     "partialIndex": "向量索引 {indexed} / {chunks}",
-    "indexReady": "本地索引就绪",
+    "indexReady": "索引就绪",
     "indexUnavailable": "索引状态不可用",
     "companiesUnavailable": "无法读取公司列表。",
     "unknownCompany": "公司未标注",
@@ -272,7 +288,7 @@
     const $ = (id) => document.getElementById(id);
     let language = 'en';
     try { if (localStorage.getItem('rag-language') === 'zh-CN') language = 'zh-CN'; } catch {}
-    let currentStats = null, statsFailed = false, lastResult = null, currentError = null;
+    let currentStats = null, statsFailed = false, lastResult = null, currentError = null, activeExample = null;
     const t = (key, values = {}) => (messages[language][key] || messages.en[key] || key)
       .replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
     const number = (value) => Number(value || 0).toLocaleString(language);
@@ -283,7 +299,9 @@
       return node;
     }
     function localizedError(key, values) { return Object.assign(new Error(t(key, values)), {key, values}); }
+    const exampleQuestion = button => `${t(button.dataset.question)} ${t('exampleInstruction')}`;
     function setLanguage(value) {
+      const translateExample = activeExample && $('question').value === exampleQuestion(activeExample);
       language = Object.hasOwn(messages, value) ? value : 'en';
       document.documentElement.lang = language;
       $('language').value = language;
@@ -291,6 +309,8 @@
       for (const attribute of ['placeholder', 'aria-label']) {
         document.querySelectorAll(`[data-i18n-${attribute}]`).forEach(node => node.setAttribute(attribute, t(node.getAttribute(`data-i18n-${attribute}`))));
       }
+      if (translateExample) $('question').value = exampleQuestion(activeExample);
+      else activeExample = null;
       renderStats();
       if (lastResult && !$('result').hidden) showResult(lastResult.data, lastResult.elapsed, false);
       if (currentError && !$('error').hidden) showError(currentError);
@@ -299,6 +319,7 @@
       let response;
       try { response = await fetch(url, {...options, headers: {'Accept-Language': language, ...options.headers}}); }
       catch { throw localizedError('networkError'); }
+      if (response.status === 401) { location.replace('/'); throw new Error('Please sign in.'); }
       let data;
       try { data = await response.json(); } catch { throw localizedError('invalidResponse'); }
       if (!response.ok) {
@@ -311,6 +332,7 @@
       if (statsFailed) {
         $('index-status').textContent = t('indexUnavailable');
         $('companies').replaceChildren(element('span', 'subtle', t('companiesUnavailable')));
+        $('examples').hidden = true;
         return;
       }
       if (!currentStats) return;
@@ -329,6 +351,9 @@
         $('companies').append(label);
       }
       if (!companies.length) $('companies').append(element('span', 'subtle', t('noCompanies')));
+      const available = new Set(companies.map(item => typeof item === 'string' ? item : item.company));
+      document.querySelectorAll('.example').forEach(button => button.hidden = !available.has(button.dataset.company));
+      $('examples').hidden = !document.querySelector('.example:not([hidden])');
       const chunks = Number(stats.chunks || 0), indexed = Number(stats.indexed_chunks || 0);
       $('status-dot').className = `dot ${chunks && indexed >= chunks ? 'ready' : 'warn'}`;
       $('index-status').textContent = !chunks ? t('noIndex') : indexed < chunks ? t('partialIndex', {indexed: number(indexed), chunks: number(chunks)}) : t('indexReady');
@@ -425,7 +450,7 @@
       if (dateFrom && dateTo && dateFrom > dateTo) { showError(localizedError('invalidDates')); return; }
       const companies = Array.from($('companies').querySelectorAll('input:checked'), input => input.value);
       const payload = {question, language, companies: companies.length ? companies : null, date_from: dateFrom || null, date_to: dateTo || null, rewrite: $('rewrite').checked, mode: $('mode').value, top_k: Number($('top-k').value)};
-      const controls = Array.from(document.querySelectorAll('input,textarea,select,button')).filter(control => !control.disabled);
+      const controls = Array.from(document.querySelectorAll('input,textarea,select,button')).filter(control => !control.disabled && control.id !== 'logout');
       controls.forEach(control => control.disabled = true);
       $('error').hidden = true; $('loading').hidden = false; $('empty').hidden = true; $('result').hidden = true;
       $('submit').textContent = t('answering'); $('ask-form').setAttribute('aria-busy', 'true');
@@ -439,8 +464,28 @@
       try { localStorage.setItem('rag-language', language); } catch {}
     });
     $('clear-companies').addEventListener('click', () => $('companies').querySelectorAll('input').forEach(input => input.checked = false));
-    document.querySelectorAll('.example').forEach(button => button.addEventListener('click', () => { $('question').value = button.textContent; $('question').focus(); }));
+    document.querySelectorAll('.example').forEach(button => button.addEventListener('click', () => {
+      const inputs = Array.from($('companies').querySelectorAll('input'));
+      if (!inputs.some(input => input.value === button.dataset.company)) return;
+      inputs.forEach(input => input.checked = input.value === button.dataset.company);
+      activeExample = button;
+      $('question').value = exampleQuestion(button);
+      $('question').focus();
+    }));
+    $('question').addEventListener('input', () => activeExample = null);
+    $('logout').addEventListener('click', async () => {
+      $('logout').disabled = true;
+      try { await request('/api/logout', {method:'POST'}); location.replace('/'); }
+      catch (error) { $('logout').disabled = false; showError(error); }
+    });
+    window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
     setLanguage(language);
+    request('/api/session').then(session => {
+      if (session.authentication_required) {
+        $('signed-in-user').textContent = session.username;
+        $('signed-in-user').hidden = false; $('logout').hidden = false;
+      }
+    }).catch(showError);
     loadStats();
   </script>
 </body>

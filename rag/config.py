@@ -23,6 +23,11 @@ class Settings:
     chat_min_tokens: int = 0
     chat_response_format: str | None = None
     qdrant_url: str = 'http://127.0.0.1:6333'
+    public_origin: str = ''
+    rate_limit_db_path: Path | None = None
+    trusted_proxy_ips: str = ''
+    auth_users: dict[str, str] | None = None
+    auth_required: bool = False
 
     @property
     def openclaw_embedding_model(self):
@@ -58,6 +63,29 @@ class Settings:
         response_format = os.getenv('RAG_CHAT_RESPONSE_FORMAT') or None
         if response_format not in (None, 'json_object', 'text'):
             raise ValueError('RAG_CHAT_RESPONSE_FORMAT must be json_object, text, or unset.')
+        public_origin = os.getenv('RAG_PUBLIC_ORIGIN', '').rstrip('/')
+        if not public_origin and os.getenv('SPACE_HOST'):
+            public_origin = 'https://' + os.environ['SPACE_HOST']
+        if public_origin:
+            origin = urlsplit(public_origin)
+            if (origin.scheme not in ('http', 'https') or not origin.hostname or origin.path
+                    or origin.username is not None or origin.query or origin.fragment):
+                raise ValueError('RAG_PUBLIC_ORIGIN must be an HTTP(S) origin without a path or credentials.')
+            origin.port  # Validate malformed ports at startup.
+        rate_limit_path = os.getenv('RAG_RATE_LIMIT_DB_PATH')
+        raw_auth_required = os.getenv('RAG_AUTH_REQUIRED', '0').lower()
+        if raw_auth_required not in ('0', '1', 'false', 'true'):
+            raise ValueError('RAG_AUTH_REQUIRED must be 0 or 1.')
+        auth_required = raw_auth_required in ('1', 'true')
+        auth_users = None
+        if os.getenv('RAG_AUTH_USERS_JSON'):
+            from .auth import validate_users
+            try:
+                auth_users = validate_users(json.loads(os.environ['RAG_AUTH_USERS_JSON']))
+            except (ValueError, TypeError):
+                raise ValueError('RAG_AUTH_USERS_JSON must contain valid username/password-hash pairs.') from None
+        if auth_required and not auth_users:
+            raise ValueError('Authentication is required; configure RAG_AUTH_USERS_JSON before starting.')
         parsed = urlsplit(base_url)
         token = os.getenv('RAG_API_KEY', '')
         # Never forward the local gateway credential to a differently configured host.
@@ -73,4 +101,7 @@ class Settings:
                    chat_api_key=os.getenv('RAG_CHAT_API_KEY'), chat_temperature=temperature,
                    chat_thinking=thinking, chat_token_limit_field=token_limit_field,
                    chat_reasoning_effort=reasoning_effort, chat_min_tokens=min_tokens,
-                   chat_response_format=response_format, qdrant_url=qdrant_url)
+                   chat_response_format=response_format, qdrant_url=qdrant_url,
+                   public_origin=public_origin, rate_limit_db_path=Path(rate_limit_path) if rate_limit_path else None,
+                   trusted_proxy_ips=os.getenv('RAG_TRUSTED_PROXY_IPS', ''),
+                   auth_users=auth_users, auth_required=auth_required)

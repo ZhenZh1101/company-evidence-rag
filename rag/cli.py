@@ -140,7 +140,7 @@ def main():
         if args.command == 'serve':
             import uvicorn
             from .web import create_app
-            uvicorn.run(create_app(settings), host='127.0.0.1', port=args.port)
+            uvicorn.run(create_app(settings), host='127.0.0.1', port=args.port, proxy_headers=False)
             return
         if args.command == 'doctor':
             if doctor(settings):

@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ from fastapi.testclient import TestClient
 from bs4 import BeautifulSoup
 
 from rag.config import Settings
+from rag.admission import QueueFull
 from rag.ingest import Segment, Source
 from rag.store import Store
 from rag.web import create_app
@@ -45,6 +47,73 @@ class WebTests(unittest.TestCase):
         response = self.client.get("/api/stats", headers={"Origin": "http://127.0.0.1:8000"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["documents"], 1)
+
+    def test_hosted_origin_supports_https_termination_and_huggingface_iframe_only(self):
+        settings = replace(self.settings, public_origin='https://owner-evidence.hf.space')
+        with patch('rag.web.Gateway', return_value=self.gateway):
+            with TestClient(create_app(settings), base_url='http://owner-evidence.hf.space') as client:
+                page = client.get('/', headers={'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Dest': 'iframe'})
+                self.assertEqual(page.status_code, 200)
+                self.assertIn("frame-ancestors 'self' https://huggingface.co", page.headers['content-security-policy'])
+                response = client.get('/api/stats', headers={'Origin': settings.public_origin})
+                self.assertEqual(response.status_code, 200)
+                for headers in ({'Host': 'attacker.hf.space'}, {'Host': 'owner-evidence.hf.space:8000'},
+                                {'Origin': 'https://huggingface.co'}, {'Origin': 'http://owner-evidence.hf.space'},
+                                {'Origin': 'https://owner-evidence.hf.space.evil.test'}, {'Sec-Fetch-Site': 'cross-site'}):
+                    with self.subTest(headers=headers):
+                        self.assertEqual(client.post('/api/ask', json={'question': 'Revenue'}, headers=headers).status_code, 403)
+        self.gateway.chat.assert_not_called()
+        self.gateway.embed.assert_not_called()
+
+    def test_rate_limit_is_bilingual_before_any_gateway_work_and_does_not_affect_reading(self):
+        payload = {'question': 'Revenue', 'language': 'zh-CN'}
+        with patch('rag.web.RAG.ask', return_value={'answer': 'Answer'}) as ask:
+            self.assertEqual(self.client.post('/api/ask', json={'question': ''}).status_code, 422)
+            for _ in range(5):
+                self.assertEqual(self.client.post('/api/ask', json=payload).status_code, 200)
+            denied = self.client.post('/api/ask', json=payload, headers={'X-Forwarded-For': '203.0.113.99'})
+            self.assertEqual(denied.status_code, 429)
+            self.assertEqual(denied.json()['detail'], denied.json()['error_messages']['zh-CN'])
+            self.assertIn('50', denied.json()['detail'])
+            self.assertGreater(int(denied.headers['retry-after']), 0)
+            self.assertEqual(ask.call_count, 5)
+            self.assertEqual(self.client.get('/api/stats').status_code, 200)
+            self.assertEqual(self.client.get(f'/api/source/{self.chunk_id}').status_code, 200)
+        self.gateway.chat.assert_not_called()
+        self.gateway.embed.assert_not_called()
+
+    def test_full_queue_returns_503_retry_after_before_gateway_work(self):
+        with patch.object(self.client.app.state.admission, 'run', side_effect=QueueFull()):
+            response = self.client.post('/api/ask', json={'question': 'Revenue', 'language': 'zh-CN'})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers['retry-after'], '5')
+        self.assertEqual(response.json()['detail'], response.json()['error_messages']['zh-CN'])
+        self.assertIn('5', response.json()['detail'])
+        self.gateway.chat.assert_not_called()
+        self.gateway.embed.assert_not_called()
+
+    def test_query_metrics_include_queue_and_exclude_question_and_credentials(self):
+        original_run = self.client.app.state.admission.run
+        async def delayed_run(client, operation):
+            import asyncio
+            await asyncio.sleep(0.02)
+            return await original_run(client, operation)
+        question = 'privatequestionwithoutmatches'
+        with patch.object(self.client.app.state.admission, 'run', side_effect=delayed_run), \
+                self.assertLogs('uvicorn.error.rag', level='INFO') as logs:
+            response = self.client.post('/api/ask', json={'question': question, 'mode': 'lexical', 'rewrite': False})
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertEqual(result['answer_code'], 'no_evidence')
+        self.assertGreaterEqual(result['timings']['queue_seconds'], 0.02)
+        self.assertGreaterEqual(result['timings']['request_seconds'],
+                                result['timings']['total_seconds'] + result['timings']['queue_seconds'] - 0.0002)
+        self.assertEqual(result['diagnostics']['answer_attempts'], 0)
+        self.assertEqual(result['timings']['answer_seconds'], 0)
+        self.assertIn(result['request_id'], logs.output[0])
+        self.assertNotIn(question, logs.output[0])
+        self.assertNotIn(self.settings.api_key, logs.output[0])
+        self.assertNotIn(self.evidence, logs.output[0])
 
     def test_request_bounds_dates_and_company_validation(self):
         for fields in ({"question": " "}, {"question": "x" * 4001}, {"top_k": 21},
