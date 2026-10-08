@@ -1,15 +1,3 @@
----
-title: Company Evidence Rag
-emoji: 📉
-colorFrom: indigo
-colorTo: indigo
-sdk: docker
-pinned: false
-license: apache-2.0
-app_port: 7860
-startup_duration_timeout: 1h
----
-
 # Public Company Document RAG
 
 A locally running **Advanced RAG** system with archive-aware document ingestion, hybrid BM25 + vector retrieval, company and disclosure-date filters, an English/Simplified Chinese interface and Q&A, and verifiable source quotations. Vector retrieval uses the free, open-source, self-hosted [Qdrant](https://github.com/qdrant/qdrant), with no cloud account required; SQLite stores documents, the full-text index, and the embedding cache. English is the default language. See the [architecture notes](docs/architecture.md) for design decisions and tradeoffs, and the [reference paper on arXiv](https://arxiv.org/abs/2312.10997v5).
